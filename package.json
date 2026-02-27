@@ -24,12 +24,21 @@
     "./adapters": {
       "types": "./dist/adapters/index.d.ts",
       "import": "./dist/adapters/index.js"
+    },
+    "./llm": {
+      "types": "./dist/agents/llm/types.d.ts",
+      "import": "./dist/agents/llm/types.js"
+    },
+    "./llm/providers": {
+      "types": "./dist/agents/llm/providers/index.d.ts",
+      "import": "./dist/agents/llm/providers/index.js"
     }
   },
   "sideEffects": false,
   "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-cli-assets.mjs",
+    "ui:sync": "pnpm -C dashboard-app build && node scripts/sync-dashboard-app.mjs && pnpm run build",
     "build:watch": "tsc --watch",
     "dev": "tsx watch src/cli/index.ts",
     "dev:cli": "tsx src/cli/index.ts",
@@ -45,6 +54,8 @@
     "prepare": "husky || true",
     "prepublishOnly": "pnpm run test && pnpm run build",
     "sim:toy": "tsx src/cli/index.ts run --toy",
+    "sim:llm-gossip": "tsx src/cli/index.ts run examples/llm-gossip/scenario.ts --mode exploration",
+    "sim:llm-gossip:deterministic": "tsx src/cli/index.ts run examples/llm-gossip/scenario.ts --mode deterministic",
     "sim:doctor": "tsx src/cli/index.ts doctor",
     "changeset": "changeset",
     "release:tag": "changeset tag",
@@ -78,21 +89,24 @@
     "@scure/bip32": "^1.3.0",
     "@scure/bip39": "^1.2.0",
     "commander": "^12.1.0",
+    "ml-matrix": "^6.12.1",
     "pino": "^9.6.0",
     "pino-pretty": "^13.1.3",
     "tsx": "^4.19.0",
     "viem": "^2.21.0",
+    "ws": "^8.19.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.27.0",
-    "typedoc": "^0.27.0",
     "@biomejs/biome": "^1.9.0",
+    "@changesets/cli": "^2.27.0",
     "@types/node": "^22.10.0",
+    "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^2.1.0",
     "@vitest/ui": "^2.1.0",
     "husky": "^9.0.0",
     "lint-staged": "^15.0.0",
+    "typedoc": "^0.27.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0"
   },

@@ -116,6 +116,23 @@ export class MetricsCollector {
   }
 
   /**
+   * Merge additional metric-like values into the most recent sample for a tick.
+   * Used for appending probe-derived columns into metrics.csv without changing Pack.getMetrics().
+   */
+  mergeIntoSample(
+    tick: number,
+    extras: Record<string, number | bigint | string | undefined>
+  ): void {
+    const s = [...this.samples].reverse().find((x) => x.tick === tick) ?? null;
+    if (!s) return;
+    for (const [k, v] of Object.entries(extras)) {
+      if (!k) continue;
+      if (v === undefined) continue;
+      s.metrics[k] = v;
+    }
+  }
+
+  /**
    * Get the final metrics (from most recent sample)
    * @returns The metrics from the most recent sample, or empty object
    */
@@ -133,8 +150,14 @@ export class MetricsCollector {
       return 'tick,timestamp\n';
     }
 
-    // Get all metric keys from first sample
-    const metricKeys = Object.keys(this.samples[0]!.metrics);
+    // Union of keys across samples (probe columns may only appear on some ticks).
+    const keySet = new Set<string>();
+    for (const s of this.samples) {
+      for (const k of Object.keys(s.metrics)) {
+        keySet.add(k);
+      }
+    }
+    const metricKeys = [...keySet].sort();
     const headers = ['tick', 'timestamp', ...metricKeys];
 
     const rows = this.samples.map((sample) => {
@@ -145,7 +168,8 @@ export class MetricsCollector {
           const value = sample.metrics[key];
           if (value === undefined) return '';
           if (typeof value === 'bigint') return value.toString();
-          return String(value);
+          // Avoid producing invalid CSV rows; we don't implement full quoting yet.
+          return String(value).replaceAll('\n', ' ').replaceAll(',', ';');
         }),
       ];
       return values.join(',');

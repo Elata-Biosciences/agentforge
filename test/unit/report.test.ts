@@ -202,6 +202,7 @@ describe('Report Utilities', () => {
       expect(report).toContain('## KPI Summary');
       expect(report).toContain('## Agent Statistics');
       expect(report).toContain('## Action Analysis');
+      expect(report).toContain('## Tail Risk & Regime Signals');
       expect(report).toContain('## Determinism Fingerprint');
     });
 
@@ -356,11 +357,11 @@ function createMockArtifacts(): RunArtifacts {
       },
       options: {},
     },
-    metrics: [
-      { tick: 0, timestamp: 0, volume: 0 },
-      { tick: 50, timestamp: 50, volume: 500 },
-      { tick: 99, timestamp: 99, volume: 1000 },
-    ],
+    metrics: Array.from({ length: 10 }, (_v, i) => ({
+      tick: i,
+      timestamp: i,
+      volume: i * 100,
+    })),
     actions: [createMockAction('buy', true), createMockAction('sell', true)],
     hashes: {
       summary: 'hash1',

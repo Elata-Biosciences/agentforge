@@ -283,8 +283,16 @@ describe('ArtifactsWriter', () => {
         timestamp: 1000,
         agentId: 'agent-1',
         agentType: 'Test',
-        action: null,
-        result: null,
+        action: { id: 'a1', name: 'do', params: {} },
+        result: {
+          ok: true,
+          events: [
+            {
+              name: 'ExploitEvidence',
+              args: { exploitId: 'demo', txHash: '0xabc', note: 'proof' },
+            },
+          ],
+        },
         durationMs: 1,
       });
 
@@ -297,6 +305,7 @@ describe('ArtifactsWriter', () => {
       await expect(access(join(runDir, 'metrics.csv'))).resolves.toBeUndefined();
       await expect(access(join(runDir, 'actions.ndjson'))).resolves.toBeUndefined();
       await expect(access(join(runDir, 'config_resolved.json'))).resolves.toBeUndefined();
+      await expect(access(join(runDir, 'evidence.json'))).resolves.toBeUndefined();
     });
   });
 });
@@ -316,6 +325,11 @@ describe('generateRunId', () => {
   it('uses stable naming in CI mode', () => {
     const runId = generateRunId('test', true);
     expect(runId).toBe('test-ci');
+  });
+
+  it('appends suffix when provided', () => {
+    const runId = generateRunId('test', true, 'seed-7');
+    expect(runId).toBe('test-ci-seed-7');
   });
 
   it('produces unique IDs in non-CI mode', () => {

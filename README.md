@@ -41,6 +41,8 @@ results/<scenario>-<timestamp>/
 ├── metrics.csv           # Time-series data for analysis
 ├── actions.ndjson        # Complete action log
 ├── config_resolved.json  # Resolved configuration for reproducibility
+├── replay_bundle.json    # Exploration trace bundle for replay mode
+├── smoke_results.json    # Assumption perturbation divergence outputs (optional)
 └── report.md             # Generated report (optional)
 ```
 
@@ -233,6 +235,8 @@ forge-sim init [path]              # Initialize simulation folder
 forge-sim run <scenario>           # Execute a scenario
 forge-sim run --toy                # Run built-in demo
 forge-sim report <runDir>          # Generate report from artifacts
+forge-sim dashboard <runDir>       # Generate self-contained dashboard.html
+forge-sim extract-agent <bundle>   # Generate deterministic agent from replay_bundle.json
 forge-sim compare <runA> <runB>    # Compare two runs
 forge-sim sweep <scenario>         # Multi-seed statistical run
 forge-sim doctor                   # Check dependencies
@@ -244,10 +248,59 @@ Options for `run`:
 --seed <n>           # Override random seed
 --ticks <n>          # Override tick count
 --out <dir>          # Output directory
+--mode <mode>        # deterministic | exploration | replay
+--replay-bundle <p>  # Replay bundle path for mode=replay
 --ci                 # CI mode (no colors, stable naming)
 --verbose            # Verbose logging
 --json               # Output results as JSON
 ```
+
+Mode guidance:
+- `deterministic`: no live LLM calls, best for baseline and CI checks
+- `exploration`: LLM-enabled red-team discovery, produces `replay_bundle.json`
+- `replay`: deterministic re-run of prior exploration traces against updated contracts
+
+## Persona LLM Agents
+
+`PersonaLlmAgentBase` provides a reusable base for persona-driven LLM agents with:
+- persona profile (`id`, `style`, goals, risk profile, tool preferences)
+- structured prompt assembly (persona + world + memory + capability manifest context)
+- two-stage decision flow (plan -> action) with fallback to single-shot action parsing
+- schema-validated action intents with optional persona metadata
+
+Use it directly for custom agents, or subclass `LlmPolicyAgent` compatibility patterns.
+
+```ts
+import { PersonaLlmAgentBase, type PersonaProfile } from '@elata-biosciences/agentforge';
+```
+
+### Autonomous RPC Policy (Exploration)
+
+Exploration-mode `RpcCall` autonomy supports two policies:
+- `strict` (default): requires explicit scenario allowlist
+- `aggressive`: allows any non-empty RPC method when no explicit allowlist is configured
+
+Controls:
+- scenario config: `exploration.autonomousRpcPolicy = 'strict' | 'aggressive'`
+- env override: `AGENTFORGE_AUTONOMOUS_RPC_POLICY=strict|aggressive`
+- kill switch: `AGENTFORGE_DISABLE_AUTONOMOUS_RPC=1`
+
+Example:
+
+```ts
+exploration: {
+  allowArbitraryExecution: true,
+  autonomousRpcPolicy: 'aggressive',
+  disableAutonomousRpc: false,
+  allowlist: { allowedContracts: [], allowedRpcMethods: [] },
+}
+```
+
+### Capability Manifest in Tick Context
+
+Each `TickContext` can include a `capabilities` manifest (`version`, tools, query endpoints,
+contracts, action templates). Packs can provide a rich manifest via `getCapabilityManifest()`;
+otherwise AgentForge builds a conservative fallback manifest from known tools/query endpoints.
 
 ## API Reference
 
@@ -268,6 +321,9 @@ import { ToyPack, RandomTraderAgent, MomentumAgent } from '@elata-biosciences/ag
 - [Core Concepts](docs/concepts.md) — Scenarios, agents, ticks, packs, determinism
 - [CI Integration](docs/ci.md) — GitHub Actions, GitLab CI, exit codes
 - [Reporting](docs/reporting.md) — Report, compare, and sweep commands
+- [LLM/Gossip Workflow](docs/llm-gossip-replay.md) — Exploration, replay, and information diffusion
+- [Portability](docs/portability.md) — Using AgentForge in other repos and with different LLM providers
+- [Competitive Landscape](docs/landscape.md) — How AgentForge complements Foundry/Echidna and differs from dashboards
 
 ## Examples
 

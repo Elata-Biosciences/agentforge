@@ -22,6 +22,7 @@ interface CheckResult {
 export const doctorCommand = new Command('doctor')
   .description('Check environment and dependencies')
   .option('--json', 'Output results as JSON')
+  .option('--check-llm', 'Check for common LLM API keys (optional)')
   .action(async (options) => {
     const results: CheckResult[] = [];
     const jsonMode = options.json === true;
@@ -48,6 +49,10 @@ export const doctorCommand = new Command('doctor')
 
     // Check sim/results write access
     results.push(await checkSimResults(jsonMode));
+
+    if (options.checkLlm) {
+      results.push(checkLlmEnv(jsonMode));
+    }
 
     // Compute summary
     const errors = results.filter((r) => r.status === 'error' && !isOptional(r.name));
@@ -212,4 +217,31 @@ async function checkSimResults(silent = false): Promise<CheckResult> {
 
 function isOptional(name: string): boolean {
   return name === 'Foundry' || name === 'Anvil';
+}
+
+function checkLlmEnv(silent = false): CheckResult {
+  const present =
+    Boolean(process.env.OPENAI_API_KEY) ||
+    Boolean(process.env.ANTHROPIC_API_KEY) ||
+    Boolean(process.env.OPENROUTER_API_KEY) ||
+    Boolean(process.env.GEMINI_API_KEY) ||
+    Boolean(process.env.OPENAI_COMPAT_API_KEY);
+
+  if (present) {
+    if (!silent) output.check('LLM env', 'ok', 'At least one provider key found');
+    return { name: 'LLM env', status: 'ok', message: 'At least one provider key found' };
+  }
+
+  if (!silent) {
+    output.check(
+      'LLM env',
+      'warn',
+      'No provider keys found (exploration runs will fallback or fail)'
+    );
+  }
+  return {
+    name: 'LLM env',
+    status: 'warn',
+    message: 'No provider keys found (exploration runs will fallback or fail)',
+  };
 }

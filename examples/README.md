@@ -24,6 +24,7 @@ npx tsx examples/<example-name>/scenario.ts
 | [custom-agent](#2-custom-agent) | Create custom agent behaviors | Memory, cooldowns, parameters |
 | [assertions](#3-assertions) | Validate simulation outcomes | All assertion types, CI testing |
 | [metrics-tracking](#4-metrics-tracking) | Detailed metrics and analysis | CSV export, statistics |
+| [llm-gossip](#5-llm--gossip-canonical) | Real-provider gossip workflow | exploration/replay modes, gossip observability |
 
 ---
 
@@ -194,6 +195,29 @@ The example shows how to:
 2. Parse time-series data
 3. Calculate statistics per metric
 4. Display ASCII price charts
+
+---
+
+## 5. LLM + Gossip (Canonical)
+
+**Path:** `llm-gossip/`
+
+Canonical reference for real-provider LLM runs with gossip messages and deterministic fallback mode.
+
+```bash
+# Non-deterministic, live provider behavior
+npx agentforge run examples/llm-gossip/scenario.ts --mode exploration
+
+# Deterministic baseline (no live provider calls)
+npx agentforge run examples/llm-gossip/scenario.ts --mode deterministic
+```
+
+**What it demonstrates:**
+
+- Exploration mode with real provider-generated gossip
+- Deterministic/replay-safe fallback messaging
+- Gossip inspection in Studio (Gossip tab + Agent Inspector)
+- Notebook-style report blocks for run interpretation
 
 ---
 

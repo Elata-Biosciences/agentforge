@@ -60,6 +60,16 @@ export interface TickContext {
   pack: Pack;
   /** Read-only world state snapshot */
   world: WorldState;
+  /** Optional query context for budgeted world access */
+  query?: QueryContext;
+  /** Optional gossip context for reading/posting messages */
+  gossip?: GossipContext;
+  /** Current run mode */
+  mode?: RunMode;
+  /** Last action result for this agent (previous tick) */
+  lastResult?: ActionResult | null;
+  /** Optional capability manifest describing callable tools/contracts */
+  capabilities?: CapabilityManifest;
 }
 
 /**
@@ -155,6 +165,14 @@ export interface Pack {
   /** Execute an action and return the result */
   executeAction(action: Action, agentId: string): Promise<ActionResult>;
 
+  /** Optional read-only RPC call support for exploration features */
+  callRpc?(method: string, params?: unknown[]): Promise<unknown>;
+
+  /** Optional list of scenario-deployed contracts for allowlist checks */
+  getDeployedContracts?(): string[];
+  /** Optional rich capability manifest for LLM/tooling context */
+  getCapabilityManifest?(agentId?: string): CapabilityManifest;
+
   /** Get metrics for the current state */
   getMetrics(): Record<string, number | bigint | string>;
 
@@ -214,6 +232,25 @@ export interface Scenario {
   probeEveryTicks?: number;
   /** Checkpoint configuration */
   checkpoints?: CheckpointConfig;
+  /** Optional gossip configuration */
+  gossip?: GossipConfig;
+  /** Optional scheduled events injected into the run */
+  schedule?: ScheduledEvent[];
+  /** Optional query configuration */
+  query?: QueryConfig;
+  /** Optional replay settings */
+  replay?: ReplayConfig;
+  /** Optional smoke testing configuration */
+  smoke?: SmokeTestConfig;
+  /** Optional exploration policy settings */
+  exploration?: ExplorationConfig;
+  /**
+   * Optional Studio/report configuration.
+   *
+   * This is consumed by Studio and `forge-sim dashboard` for report dashboards.
+   * The shape is validated by Studio zod schemas (kept out of core types to avoid cycles).
+   */
+  studio?: { report?: unknown };
 }
 
 /**
@@ -239,6 +276,16 @@ export interface MetricsConfig {
   sampleEveryTicks: number;
   /** Specific metrics to track */
   track?: string[];
+  /**
+   * Emit probe samples into metrics.csv as additional columns.
+   *
+   * Default: 'none' (probes are still available for checkpoints and other artifacts).
+   */
+  probeEmitMode?: 'none' | 'selected' | 'all';
+  /**
+   * Probe names to emit when probeEmitMode='selected'.
+   */
+  emitProbes?: string[];
 }
 
 /**
@@ -325,7 +372,36 @@ export interface RunOptions {
   ci?: boolean;
   /** Verbose logging */
   verbose?: boolean;
+  /** Run mode */
+  mode?: RunMode;
+  /** Optional replay bundle path for Mode C */
+  replayBundlePath?: string;
+  /** Optional suffix appended to the runId (useful for sweeps/matrices in CI) */
+  runIdSuffix?: string;
+  /** Optional live websocket event stream (best-effort; does not affect determinism) */
+  live?: boolean;
+  /** Host/interface for the live websocket server (default: 127.0.0.1) */
+  liveHost?: string;
+  /** Port for the live websocket server (default: 8787) */
+  livePort?: number;
+  /**
+   * Agent memory capture to `agent_memory.ndjson`.
+   *
+   * This is an artifacts/observability feature; it does not affect simulation determinism.
+   */
+  memoryCapture?: MemoryCaptureConfig;
 }
+
+export type MemoryCaptureConfig = {
+  enabled: boolean;
+  /** Capture every N ticks (default: 1) */
+  sampleEveryTicks: number;
+  /**
+   * Max bytes for a single snapshot record (default: 262144). Use null to disable truncation.
+   * Note: this is measured on the JSON stringified record.
+   */
+  maxBytesPerRecord: number | null;
+};
 
 /**
  * Result of a simulation run
@@ -351,6 +427,8 @@ export interface RunResult {
   agentStats: AgentStats[];
   /** Path to output directory */
   outputDir: string;
+  /** Optional replay bundle path if generated */
+  replayBundlePath?: string;
 }
 
 /**
@@ -393,4 +471,273 @@ export interface MetricsSample {
   tick: number;
   timestamp: number;
   metrics: Record<string, number | bigint | string>;
+}
+
+export type RunMode = 'deterministic' | 'exploration' | 'replay';
+
+export interface QueryBudget {
+  maxQueriesPerTick: number;
+  maxCostPerTick: number;
+  maxBytesPerTick: number;
+}
+
+export interface QueryRequest {
+  endpoint: string;
+  params?: Record<string, unknown>;
+}
+
+export interface QueryResult {
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+  bytes: number;
+  cost: number;
+  truncated?: boolean;
+}
+
+export interface QueryEndpoint {
+  name: string;
+  cost: number;
+  maxResponseBytes?: number;
+  priority?: 'low' | 'normal' | 'high';
+  handler: (params: Record<string, unknown> | undefined, world: WorldState) => unknown;
+}
+
+export interface QueryContext {
+  query: (request: QueryRequest) => QueryResult;
+  budget: QueryBudgetState;
+}
+
+export interface QueryBudgetState {
+  usedQueries: number;
+  usedCost: number;
+  usedBytes: number;
+  remainingQueries: number;
+  remainingCost: number;
+  remainingBytes: number;
+}
+
+export interface QueryConfig {
+  defaultBudget: QueryBudget;
+  endpoints?: QueryEndpoint[];
+  indexingDelayTicks?: number;
+  redactWorldKeys?: string[];
+  noisyWorldKeys?: string[];
+  noiseSigma?: number;
+}
+
+export interface CapabilityContract {
+  alias: string;
+  address?: string;
+  description?: string;
+  callable?: Array<{
+    kind: 'view' | 'write' | 'rpc';
+    name: string;
+    args?: string[];
+    notes?: string;
+  }>;
+}
+
+export interface CapabilityActionTemplate {
+  name: string;
+  description: string;
+  exampleParams: Record<string, unknown>;
+}
+
+export interface CapabilityManifest {
+  version: 'v1';
+  generatedAtTick?: number;
+  mode?: RunMode;
+  tools: string[];
+  queryEndpoints: Array<{ name: string; cost: number; maxResponseBytes?: number }>;
+  contracts: CapabilityContract[];
+  actionTemplates: CapabilityActionTemplate[];
+}
+
+export type GossipChannelType = 'global' | 'topic' | 'dm' | 'group';
+
+export interface GossipChannel {
+  id: string;
+  type: GossipChannelType;
+  members?: string[];
+  /** Optional per-channel post cooldown, enforced across ticks */
+  postCooldownTicks?: number;
+  /** Clamp credibilityPrior into [min,max] for this channel */
+  minCredibilityPrior?: number;
+  maxCredibilityPrior?: number;
+}
+
+export type AudienceSpec =
+  | { type: 'public' }
+  | { type: 'agents'; agentIds: string[] }
+  | { type: 'channel'; channelId: string };
+
+export interface MessageEnvelope {
+  id: string;
+  tick: number;
+  authorAgentId: string;
+  channelId: string;
+  audience: AudienceSpec;
+  intentTag: 'inform' | 'persuade' | 'coordinate' | 'deceive' | 'probe' | 'other';
+  costPaid: number;
+  credibilityPrior: number;
+  payloadHash: string;
+}
+
+export interface MessagePayload {
+  text: string;
+  attachments?: Record<string, unknown>;
+}
+
+export interface GossipMessage {
+  envelope: MessageEnvelope;
+  payload: MessagePayload;
+}
+
+export interface DeliveryEvent {
+  tick: number;
+  messageId: string;
+  recipientAgentId: string;
+}
+
+export interface GossipBudgets {
+  maxPostsPerTick: number;
+  maxPostCostPerTick: number;
+  maxMessagesReadPerTick: number;
+  maxCharsReadPerTick: number;
+}
+
+export interface GossipContext {
+  readInbox: (agentId: string) => GossipMessage[];
+  postMessage: (
+    agentId: string,
+    channelId: string,
+    payload: MessagePayload,
+    options?: Partial<
+      Omit<MessageEnvelope, 'id' | 'tick' | 'authorAgentId' | 'channelId' | 'payloadHash'>
+    >
+  ) => { ok: boolean; error?: string; messageId?: string };
+}
+
+export interface GossipConfig {
+  channels: GossipChannel[];
+  budgets: GossipBudgets;
+  defaultLatencyTicks?: number;
+  dropRate?: number;
+  paraphraseRate?: number;
+}
+
+export type ScheduledEventType =
+  | 'info_event'
+  | 'assumption_update'
+  | 'gossip_inject'
+  | 'world_overlay'
+  | 'world_overlay_clear';
+
+export interface ScheduledEvent {
+  tick: number;
+  type: ScheduledEventType;
+  payload: Record<string, unknown>;
+}
+
+export interface ReplayActionRecord {
+  tick: number;
+  agentId: string;
+  action: Action | null;
+}
+
+export interface ReplayMessageRecord {
+  tick: number;
+  message: GossipMessage;
+}
+
+export interface ReplayQueryRecord {
+  tick: number;
+  agentId: string;
+  request: QueryRequest;
+  result: QueryResult;
+}
+
+export interface ReplayArbitraryExecutionRecord {
+  tick: number;
+  agentId: string;
+  kind: 'tx' | 'rpc';
+  intent: ArbitraryTxIntent | RpcCallIntent;
+  result: { ok: boolean; response?: unknown; error?: string };
+}
+
+export interface ReplayBundle {
+  version: 'v1';
+  scenarioName: string;
+  seed: number;
+  mode: RunMode;
+  actions: ReplayActionRecord[];
+  messages: ReplayMessageRecord[];
+  queries: ReplayQueryRecord[];
+  arbitraryExecutions: ReplayArbitraryExecutionRecord[];
+}
+
+export interface ReplayConfig {
+  enabled?: boolean;
+}
+
+export interface AssumptionPatch {
+  key: string;
+  value: unknown;
+}
+
+export interface SmokeCheckpointConfig {
+  tick: number;
+  perturbations: AssumptionPatch[];
+  branchTicks: number;
+}
+
+export interface SmokeDivergenceResult {
+  checkpointTick: number;
+  perturbation: AssumptionPatch;
+  divergenceScore: number;
+  baselineMetrics: Record<string, number | bigint | string>;
+  perturbedMetrics: Record<string, number | bigint | string>;
+}
+
+export interface SmokeTestConfig {
+  checkpoints: SmokeCheckpointConfig[];
+}
+
+export interface ActionValidationContext {
+  mode: RunMode;
+  world: WorldState;
+}
+
+export type ActionValidator = (
+  action: Action,
+  context: ActionValidationContext
+) => { ok: boolean; error?: string };
+
+export interface ActionValidatorRegistry {
+  register: (actionName: string, validator: ActionValidator) => void;
+  validate: (action: Action, context: ActionValidationContext) => { ok: boolean; error?: string };
+}
+
+export interface ArbitraryTxIntent {
+  to: string;
+  data: string;
+  value?: string;
+}
+
+export interface RpcCallIntent {
+  method: string;
+  params?: unknown[];
+}
+
+export interface ExplorationAllowlistPolicy {
+  allowedContracts: string[];
+  allowedRpcMethods: string[];
+}
+
+export interface ExplorationConfig {
+  allowArbitraryExecution?: boolean;
+  allowlist?: ExplorationAllowlistPolicy;
+  autonomousRpcPolicy?: 'strict' | 'aggressive';
+  disableAutonomousRpc?: boolean;
 }

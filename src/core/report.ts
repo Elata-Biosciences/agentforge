@@ -11,6 +11,7 @@ export interface RunArtifacts {
   config: ResolvedConfig;
   metrics: MetricsSample[];
   actions: RecordedAction[];
+  evidence?: EvidenceBundleV1;
   hashes: ArtifactHashes;
 }
 
@@ -77,10 +78,29 @@ export interface RecordedAction {
   result: {
     ok: boolean;
     error?: string;
+    events?: Array<{ name: string; args: Record<string, unknown> }>;
+    balanceDeltas?: Record<string, string>;
     gasUsed?: string;
     txHash?: string;
   } | null;
   durationMs: number;
+}
+
+export interface EvidenceRecordV1 {
+  tick: number;
+  timestamp: number;
+  agentId: string;
+  agentType: string;
+  actionId: string;
+  actionName: string;
+  txHash?: string;
+  exploitId?: string;
+  evidence: Record<string, unknown>;
+}
+
+export interface EvidenceBundleV1 {
+  version: 'v1';
+  records: EvidenceRecordV1[];
 }
 
 /**
@@ -111,6 +131,7 @@ export interface ArtifactHashes {
   config: string;
   metrics: string;
   actions: string;
+  evidence?: string;
 }
 
 /**
@@ -173,13 +194,16 @@ export async function parseRunArtifacts(runDir: string): Promise<RunArtifacts> {
   const configPath = join(runDir, 'config_resolved.json');
   const metricsPath = join(runDir, 'metrics.csv');
   const actionsPath = join(runDir, 'actions.ndjson');
+  const evidencePath = join(runDir, 'evidence.json');
 
-  const [summaryContent, configContent, metricsContent, actionsContent] = await Promise.all([
-    readFile(summaryPath, 'utf-8'),
-    readFile(configPath, 'utf-8'),
-    readFile(metricsPath, 'utf-8'),
-    readFile(actionsPath, 'utf-8'),
-  ]);
+  const [summaryContent, configContent, metricsContent, actionsContent, evidenceContent] =
+    await Promise.all([
+      readFile(summaryPath, 'utf-8'),
+      readFile(configPath, 'utf-8'),
+      readFile(metricsPath, 'utf-8'),
+      readFile(actionsPath, 'utf-8'),
+      readOptionalFile(evidencePath),
+    ]);
 
   // Parse summary
   const summary = JSON.parse(summaryContent) as RunSummary;
@@ -193,12 +217,15 @@ export async function parseRunArtifacts(runDir: string): Promise<RunArtifacts> {
   // Parse actions NDJSON
   const actions = parseActionsNDJSON(actionsContent);
 
+  const evidence = evidenceContent ? (JSON.parse(evidenceContent) as EvidenceBundleV1) : undefined;
+
   // Compute hashes
   const hashes: ArtifactHashes = {
     summary: computeHash(summaryContent),
     config: computeHash(configContent),
     metrics: computeHash(metricsContent),
     actions: computeHash(actionsContent),
+    ...(evidenceContent ? { evidence: computeHash(evidenceContent) } : {}),
   };
 
   return {
@@ -207,8 +234,19 @@ export async function parseRunArtifacts(runDir: string): Promise<RunArtifacts> {
     config,
     metrics,
     actions,
+    ...(evidence ? { evidence } : {}),
     hashes,
   };
+}
+
+async function readOptionalFile(path: string): Promise<string | null> {
+  try {
+    const info = await stat(path);
+    if (!info.isFile()) return null;
+    return await readFile(path, 'utf-8');
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -426,6 +464,37 @@ export function generateMarkdownReport(artifacts: RunArtifacts, gitCommit?: stri
   }
   lines.push('');
 
+  // Evidence-backed exploit detections (if packs emit ExploitEvidence events)
+  const exploitEvidenceRows = artifacts.evidence
+    ? artifacts.evidence.records.map((r) => ({
+        tick: r.tick,
+        agentId: r.agentId,
+        actionName: r.actionName,
+        exploitId: r.exploitId,
+        txHash: r.txHash,
+        evidence: safeInlineJson(r.evidence),
+      }))
+    : collectExploitEvidence(actions);
+
+  if (exploitEvidenceRows.length > 0) {
+    lines.push('## Exploit Evidence');
+    lines.push('');
+    lines.push(
+      'This section is populated by pack-emitted `ExploitEvidence` events (post-condition checks), not heuristics.'
+    );
+    lines.push('');
+    lines.push('| Tick | Agent | Action | Exploit | TxHash | Evidence |');
+    lines.push('|---:|---|---|---|---|---|');
+    for (const ev of exploitEvidenceRows) {
+      const shortTx = ev.txHash ? `\`${ev.txHash.slice(0, 10)}...\`` : '-';
+      const evidenceJson = ev.evidence ? `\`${truncateInline(ev.evidence, 160)}\`` : '-';
+      lines.push(
+        `| ${ev.tick} | ${ev.agentId} | ${ev.actionName} | ${ev.exploitId ?? '-'} | ${shortTx} | ${evidenceJson} |`
+      );
+    }
+    lines.push('');
+  }
+
   // Time-series statistics
   const firstMetric = metrics[0];
   if (metrics.length > 0 && firstMetric) {
@@ -449,6 +518,41 @@ export function generateMarkdownReport(artifacts: RunArtifacts, gitCommit?: stri
       }
       lines.push('');
     }
+  }
+
+  // Mechanism-design / risk primitives (generic, pack-agnostic)
+  const tail = computeTailRiskSummaries(metrics);
+  if (tail.length > 0) {
+    lines.push('## Tail Risk & Regime Signals');
+    lines.push('');
+    lines.push(
+      'Generic primitives computed from time-series metrics: P95/P99 tails, max drawdown, return volatility, and a simple regime shift flag.'
+    );
+    lines.push('');
+    lines.push('| Metric | P95 | P99 | Max Drawdown | Volatility | Regime Shift |');
+    lines.push('|--------|-----|-----|--------------|------------|--------------|');
+    for (const t of tail.slice(0, 16)) {
+      lines.push(
+        `| ${t.metric} | ${formatNumber(t.p95)} | ${formatNumber(t.p99)} | ${formatNumber(t.maxDrawdown)} | ${formatNumber(t.volatility)} | ${t.regimeShift ? 'Yes' : 'No'} |`
+      );
+    }
+    lines.push('');
+  }
+
+  const shocks = collectScheduledEvents(actions);
+  if (shocks.length > 0) {
+    lines.push('## Scheduled Shocks');
+    lines.push('');
+    lines.push(
+      'Extracted from system `ScheduledEvent` actions (useful for mechanism design runs).'
+    );
+    lines.push('');
+    lines.push('| Tick | Type | Payload |');
+    lines.push('|---:|---|---|');
+    for (const s of shocks.slice(0, 40)) {
+      lines.push(`| ${s.tick} | ${s.type} | \`${truncateInline(s.payloadJson, 180)}\` |`);
+    }
+    lines.push('');
   }
 
   // Agent Statistics
@@ -527,10 +631,175 @@ export function generateMarkdownReport(artifacts: RunArtifacts, gitCommit?: stri
   lines.push(`config:  ${hashes.config}`);
   lines.push(`metrics: ${hashes.metrics}`);
   lines.push(`actions: ${hashes.actions}`);
+  if (hashes.evidence) {
+    lines.push(`evidence:${hashes.evidence}`);
+  }
   lines.push('```');
   lines.push('');
 
   return lines.join('\n');
+}
+
+function collectExploitEvidence(actions: RecordedAction[]): Array<{
+  tick: number;
+  agentId: string;
+  actionName: string;
+  exploitId?: string;
+  txHash?: string;
+  evidence?: string;
+}> {
+  const rows: Array<{
+    tick: number;
+    agentId: string;
+    actionName: string;
+    exploitId?: string;
+    txHash?: string;
+    evidence?: string;
+  }> = [];
+
+  for (const a of actions) {
+    const events = a.result?.events;
+    if (!events || !a.action) continue;
+    for (const e of events) {
+      if (e.name !== 'ExploitEvidence') continue;
+      const exploitId = typeof e.args.exploitId === 'string' ? e.args.exploitId : undefined;
+      const txHash = typeof e.args.txHash === 'string' ? e.args.txHash : a.result?.txHash;
+      const evidence = safeInlineJson(e.args);
+      const base = {
+        tick: a.tick,
+        agentId: a.agentId,
+        actionName: a.action.name,
+        evidence,
+      };
+      rows.push({
+        ...base,
+        ...(exploitId !== undefined ? { exploitId } : {}),
+        ...(txHash !== undefined ? { txHash } : {}),
+      });
+    }
+  }
+
+  return rows.sort((x, y) => x.tick - y.tick);
+}
+
+function safeInlineJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
+  } catch {
+    return String(value);
+  }
+}
+
+function truncateInline(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 3))}...`;
+}
+
+function computeTailRiskSummaries(metrics: MetricsSample[]): Array<{
+  metric: string;
+  p95: number;
+  p99: number;
+  maxDrawdown: number;
+  volatility: number;
+  regimeShift: boolean;
+}> {
+  const first = metrics[0];
+  if (!first) return [];
+  const keys = Object.keys(first).filter((k) => k !== 'tick' && k !== 'timestamp');
+
+  const rows: Array<{
+    metric: string;
+    p95: number;
+    p99: number;
+    maxDrawdown: number;
+    volatility: number;
+    regimeShift: boolean;
+  }> = [];
+
+  for (const key of keys) {
+    const series = metrics.map((m) => Number((m as any)[key])).filter((v) => Number.isFinite(v));
+    if (series.length < 5) continue;
+
+    const sorted = [...series].sort((a, b) => a - b);
+    const p95 = percentileSorted(sorted, 95);
+    const p99 = percentileSorted(sorted, 99);
+    const maxDrawdown = computeMaxDrawdown(series);
+    const volatility = computeReturnVolatility(series);
+    const regimeShift = detectRegimeShift(series);
+
+    rows.push({ metric: key, p95, p99, maxDrawdown, volatility, regimeShift });
+  }
+
+  // Prefer "interesting" rows: higher drawdown/vol first.
+  return rows.sort((a, b) => b.maxDrawdown - a.maxDrawdown || b.volatility - a.volatility);
+}
+
+function percentileSorted(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = Math.max(0, Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[idx] ?? 0;
+}
+
+function computeMaxDrawdown(series: number[]): number {
+  let peak = Number.NEGATIVE_INFINITY;
+  let maxDd = 0;
+  for (const v of series) {
+    if (v > peak) peak = v;
+    const dd = peak - v;
+    if (dd > maxDd) maxDd = dd;
+  }
+  return maxDd;
+}
+
+function computeReturnVolatility(series: number[]): number {
+  const rets: number[] = [];
+  for (let i = 1; i < series.length; i++) {
+    const prev = series[i - 1];
+    const curr = series[i];
+    if (prev === undefined || curr === undefined) continue;
+    if (!Number.isFinite(prev) || !Number.isFinite(curr)) continue;
+    if (prev === 0) continue;
+    rets.push((curr - prev) / prev);
+  }
+  if (rets.length < 2) return 0;
+  const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
+  const varSum = rets.reduce((a, r) => a + (r - mean) ** 2, 0);
+  return Math.sqrt(varSum / (rets.length - 1));
+}
+
+function detectRegimeShift(series: number[]): boolean {
+  if (series.length < 20) return false;
+  const mid = Math.floor(series.length / 2);
+  const a = series.slice(0, mid);
+  const b = series.slice(mid);
+  const meanA = a.reduce((x, y) => x + y, 0) / a.length;
+  const meanB = b.reduce((x, y) => x + y, 0) / b.length;
+  const sd = Math.max(1e-9, stddev(series));
+  return Math.abs(meanA - meanB) > 2 * sd;
+}
+
+function stddev(values: number[]): number {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const varSum = values.reduce((a, v) => a + (v - mean) ** 2, 0);
+  return Math.sqrt(varSum / (values.length - 1));
+}
+
+function collectScheduledEvents(actions: RecordedAction[]): Array<{
+  tick: number;
+  type: string;
+  payloadJson: string;
+}> {
+  const rows: Array<{ tick: number; type: string; payloadJson: string }> = [];
+  for (const a of actions) {
+    if (a.agentId !== 'system') continue;
+    if (!a.action) continue;
+    if (a.action.name !== 'ScheduledEvent') continue;
+    const t = String((a.action.params as any)?.type ?? '');
+    const payload = (a.action.params as any)?.payload;
+    rows.push({ tick: a.tick, type: t || '-', payloadJson: safeInlineJson(payload) });
+  }
+  return rows.sort((x, y) => x.tick - y.tick);
 }
 
 /**
@@ -768,7 +1037,8 @@ export function generateCompareReport(comparison: RunComparison): string {
   const hashesMatch =
     runA.hashes.actions === runB.hashes.actions &&
     runA.hashes.metrics === runB.hashes.metrics &&
-    runA.hashes.config === runB.hashes.config;
+    runA.hashes.config === runB.hashes.config &&
+    (runA.hashes.evidence ?? null) === (runB.hashes.evidence ?? null);
 
   if (hashesMatch) {
     lines.push('Artifact hashes are **identical** - runs are deterministically equivalent.');
@@ -780,6 +1050,11 @@ export function generateCompareReport(comparison: RunComparison): string {
     lines.push(`| config | ${runA.hashes.config === runB.hashes.config ? 'Yes' : 'No'} |`);
     lines.push(`| metrics | ${runA.hashes.metrics === runB.hashes.metrics ? 'Yes' : 'No'} |`);
     lines.push(`| actions | ${runA.hashes.actions === runB.hashes.actions ? 'Yes' : 'No'} |`);
+    if (runA.hashes.evidence || runB.hashes.evidence) {
+      lines.push(
+        `| evidence | ${(runA.hashes.evidence ?? null) === (runB.hashes.evidence ?? null) ? 'Yes' : 'No'} |`
+      );
+    }
   }
   lines.push('');
 

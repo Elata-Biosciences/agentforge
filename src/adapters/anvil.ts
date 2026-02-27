@@ -50,6 +50,8 @@ export interface AnvilConfig {
   gasPrice?: bigint;
   /** Contract code size limit in bytes (default: 24576 per EIP-170) */
   codeSizeLimit?: number;
+  /** Genesis timestamp for deterministic chain time */
+  timestamp?: number;
 }
 
 /**
@@ -89,6 +91,7 @@ export const DEFAULT_ANVIL_CONFIG: Required<
     | 'gasLimit'
     | 'gasPrice'
     | 'codeSizeLimit'
+    | 'timestamp'
   >
 > = {
   port: 8545,
@@ -297,6 +300,10 @@ export async function spawnAnvil(config: AnvilConfig = {}): Promise<AnvilInstanc
 
   if (config.codeSizeLimit !== undefined) {
     args.push('--code-size-limit', config.codeSizeLimit.toString());
+  }
+
+  if (config.timestamp !== undefined) {
+    args.push('--timestamp', Math.floor(config.timestamp).toString());
   }
 
   const url = `http://127.0.0.1:${port}`;

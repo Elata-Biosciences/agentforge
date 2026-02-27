@@ -1,8 +1,16 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, open, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Logger } from 'pino';
 import type { MetricsCollector } from './metrics.js';
-import type { RecordedAction, RunOptions, RunResult, Scenario } from './types.js';
+import type {
+  GossipMessage,
+  RecordedAction,
+  ReplayBundle,
+  RunOptions,
+  RunResult,
+  Scenario,
+  SmokeDivergenceResult,
+} from './types.js';
 
 /**
  * Options for the artifacts writer
@@ -14,7 +22,19 @@ export interface ArtifactsWriterOptions {
   runId: string;
   /** Logger instance */
   logger?: Logger;
+  /** Optional hook for live streaming / sidecars */
+  onActionRecorded?: (action: RecordedAction) => void;
+  onGossipRecorded?: (event: GossipArtifactRow) => void;
 }
+
+export type GossipArtifactRow = {
+  tick: number;
+  timestamp: number;
+  kind: 'gossip_post' | 'gossip_deliver';
+  messageId: string;
+  recipientAgentId?: string;
+  message?: GossipMessage;
+};
 
 /**
  * Writes simulation artifacts to disk
@@ -23,6 +43,7 @@ export interface ArtifactsWriterOptions {
  * - summary.json: Run metadata and final KPIs
  * - metrics.csv: Time-series metrics data
  * - actions.ndjson: Newline-delimited JSON of all actions
+ * - evidence.json: Extracted exploit evidence records (if any)
  * - config_resolved.json: Resolved scenario configuration
  * - run.log: Structured log output (if configured)
  */
@@ -30,14 +51,28 @@ export class ArtifactsWriter {
   private readonly outDir: string;
   private readonly runId: string;
   private readonly logger: Logger | undefined;
+  private readonly onActionRecorded: ((action: RecordedAction) => void) | undefined;
+  private readonly onGossipRecorded: ((event: GossipArtifactRow) => void) | undefined;
   private readonly runDir: string;
   private readonly actions: RecordedAction[] = [];
+  private replayBundle: ReplayBundle | null = null;
+  private smokeResults: SmokeDivergenceResult[] = [];
   private logFileHandle: Awaited<ReturnType<typeof import('node:fs/promises').open>> | null = null;
+  private memoryFileHandle: Awaited<ReturnType<typeof import('node:fs/promises').open>> | null =
+    null;
+  private memoryBuffer: string[] = [];
+  private memoryWriteChain: Promise<void> = Promise.resolve();
+  private gossipFileHandle: Awaited<ReturnType<typeof import('node:fs/promises').open>> | null =
+    null;
+  private gossipBuffer: string[] = [];
+  private gossipWriteChain: Promise<void> = Promise.resolve();
 
   constructor(options: ArtifactsWriterOptions) {
     this.outDir = options.outDir;
     this.runId = options.runId;
     this.logger = options.logger;
+    this.onActionRecorded = options.onActionRecorded;
+    this.onGossipRecorded = options.onGossipRecorded;
     this.runDir = join(this.outDir, this.runId);
   }
 
@@ -63,6 +98,116 @@ export class ArtifactsWriter {
    */
   recordAction(action: RecordedAction): void {
     this.actions.push(action);
+    try {
+      this.onActionRecorded?.(action);
+    } catch (err) {
+      this.logger?.warn({ err }, 'onActionRecorded hook threw');
+    }
+  }
+
+  recordGossipEvent(event: GossipArtifactRow): void {
+    try {
+      this.onGossipRecorded?.(event);
+    } catch (err) {
+      this.logger?.warn({ err }, 'onGossipRecorded hook threw');
+    }
+    let line: string;
+    try {
+      line = JSON.stringify(event);
+    } catch (err) {
+      this.logger?.warn({ err }, 'Failed to stringify gossip event');
+      return;
+    }
+    this.gossipBuffer.push(line);
+    if (this.gossipBuffer.length >= 200) {
+      this.flushGossipBuffer();
+    }
+  }
+
+  private flushGossipBuffer(): void {
+    if (this.gossipBuffer.length === 0) return;
+    const chunk = `${this.gossipBuffer.join('\n')}\n`;
+    this.gossipBuffer = [];
+    const path = join(this.runDir, 'gossip.ndjson');
+    this.gossipWriteChain = this.gossipWriteChain
+      .then(async () => {
+        if (!this.gossipFileHandle) {
+          this.gossipFileHandle = await open(path, 'a');
+        }
+        await this.gossipFileHandle.write(chunk);
+      })
+      .catch((err) => {
+        this.logger?.warn({ err }, 'Failed to write gossip.ndjson chunk');
+      });
+  }
+
+  async flushGossip(): Promise<void> {
+    this.flushGossipBuffer();
+    await this.gossipWriteChain;
+  }
+
+  recordAgentMemorySnapshot(
+    record: Record<string, unknown>,
+    maxBytesPerRecord: number | null
+  ): void {
+    const safeBase = record;
+    let line: string;
+    try {
+      line = JSON.stringify(safeBase);
+    } catch (err) {
+      line = JSON.stringify({
+        ...(typeof record === 'object' && record ? record : {}),
+        memory: { __error: 'memory_snapshot_stringify_failed' },
+      });
+      this.logger?.warn({ err }, 'Failed to stringify agent memory snapshot');
+    }
+
+    if (maxBytesPerRecord !== null) {
+      const bytes = Buffer.byteLength(line, 'utf8');
+      if (bytes > maxBytesPerRecord) {
+        const memory = (record as any).memory;
+        const keys =
+          memory && typeof memory === 'object' && !Array.isArray(memory)
+            ? Object.keys(memory as Record<string, unknown>).slice(0, 200)
+            : [];
+        line = JSON.stringify({
+          ...record,
+          memory: {
+            __truncated: true,
+            originalBytes: bytes,
+            maxBytes: maxBytesPerRecord,
+            keys,
+          },
+        });
+      }
+    }
+
+    this.memoryBuffer.push(line);
+    if (this.memoryBuffer.length >= 100) {
+      this.flushAgentMemoryBuffer();
+    }
+  }
+
+  private flushAgentMemoryBuffer(): void {
+    if (this.memoryBuffer.length === 0) return;
+    const chunk = `${this.memoryBuffer.join('\n')}\n`;
+    this.memoryBuffer = [];
+    const path = join(this.runDir, 'agent_memory.ndjson');
+    this.memoryWriteChain = this.memoryWriteChain
+      .then(async () => {
+        if (!this.memoryFileHandle) {
+          this.memoryFileHandle = await open(path, 'a');
+        }
+        await this.memoryFileHandle.write(chunk);
+      })
+      .catch((err) => {
+        this.logger?.warn({ err }, 'Failed to write agent_memory.ndjson chunk');
+      });
+  }
+
+  async flushAgentMemory(): Promise<void> {
+    this.flushAgentMemoryBuffer();
+    await this.memoryWriteChain;
   }
 
   /**
@@ -82,9 +227,14 @@ export class ArtifactsWriter {
       this.writeSummary(result),
       this.writeMetrics(metricsCollector),
       this.writeActions(),
+      this.writeEvidence(),
       this.writeConfig(scenario, options),
+      this.writeReplayBundle(),
+      this.writeSmokeResults(),
     ]);
 
+    await this.flushAgentMemory();
+    await this.flushGossip();
     this.logger?.info({ runDir: this.runDir }, 'Wrote all artifacts');
   }
 
@@ -133,6 +283,19 @@ export class ArtifactsWriter {
   }
 
   /**
+   * Write evidence.json if ExploitEvidence events exist.
+   */
+  async writeEvidence(): Promise<void> {
+    const evidence = extractExploitEvidence(this.actions);
+    if (evidence.records.length === 0) {
+      return;
+    }
+    const path = join(this.runDir, 'evidence.json');
+    await writeFile(path, `${JSON.stringify(evidence, null, 2)}\n`);
+    this.logger?.debug({ path, count: evidence.records.length }, 'Wrote evidence.json');
+  }
+
+  /**
    * Write the config_resolved.json file
    * @param scenario - The scenario configuration
    * @param options - The resolved run options
@@ -152,17 +315,54 @@ export class ArtifactsWriter {
         })),
         metrics: scenario.metrics,
         assertions: scenario.assertions,
+        mode: options.mode ?? 'deterministic',
+        // Report/dashboard configuration (JSON-only; validated downstream).
+        studio: scenario.studio ?? undefined,
       },
       options: {
         outDir: options.outDir,
         ci: options.ci,
         verbose: options.verbose,
+        ...(options.memoryCapture ? { memoryCapture: options.memoryCapture } : {}),
       },
     };
 
     const path = join(this.runDir, 'config_resolved.json');
     await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
     this.logger?.debug({ path }, 'Wrote config_resolved.json');
+  }
+
+  setReplayBundle(bundle: ReplayBundle): void {
+    this.replayBundle = bundle;
+  }
+
+  setSmokeResults(results: SmokeDivergenceResult[]): void {
+    this.smokeResults = results;
+  }
+
+  async writeReplayBundle(): Promise<void> {
+    if (!this.replayBundle) {
+      return;
+    }
+    const path = join(this.runDir, 'replay_bundle.json');
+    await writeFile(
+      path,
+      `${JSON.stringify(
+        this.replayBundle,
+        (_k, value) => (typeof value === 'bigint' ? value.toString() : value),
+        2
+      )}\n`
+    );
+    this.logger?.debug({ path }, 'Wrote replay_bundle.json');
+  }
+
+  async writeSmokeResults(): Promise<void> {
+    if (this.smokeResults.length === 0) {
+      return;
+    }
+    const path = join(this.runDir, 'smoke_results.json');
+    await writeFile(path, `${JSON.stringify(this.smokeResults, null, 2)}\n`);
+    this.logger?.debug({ path }, 'Wrote smoke_results.json');
   }
 
   /**
@@ -182,7 +382,65 @@ export class ArtifactsWriter {
       await this.logFileHandle.close();
       this.logFileHandle = null;
     }
+    await this.flushAgentMemory();
+    if (this.memoryFileHandle) {
+      await this.memoryFileHandle.close();
+      this.memoryFileHandle = null;
+    }
+    await this.flushGossip();
+    if (this.gossipFileHandle) {
+      await this.gossipFileHandle.close();
+      this.gossipFileHandle = null;
+    }
   }
+}
+
+type EvidenceRecordV1 = {
+  tick: number;
+  timestamp: number;
+  agentId: string;
+  agentType: string;
+  actionId: string;
+  actionName: string;
+  txHash?: string;
+  exploitId?: string;
+  evidence: Record<string, unknown>;
+};
+
+type EvidenceBundleV1 = {
+  version: 'v1';
+  records: EvidenceRecordV1[];
+};
+
+function extractExploitEvidence(actions: RecordedAction[]): EvidenceBundleV1 {
+  const records: EvidenceRecordV1[] = [];
+  for (const a of actions) {
+    if (!a.action || !a.result?.events) continue;
+    for (const ev of a.result.events) {
+      if (ev.name !== 'ExploitEvidence') continue;
+      const exploitId = typeof ev.args.exploitId === 'string' ? ev.args.exploitId : undefined;
+      const txHash =
+        typeof ev.args.txHash === 'string'
+          ? ev.args.txHash
+          : typeof a.result.txHash === 'string'
+            ? a.result.txHash
+            : undefined;
+      const evidence = serializeBigInts(ev.args) as Record<string, unknown>;
+      const base: EvidenceRecordV1 = {
+        tick: a.tick,
+        timestamp: a.timestamp,
+        agentId: a.agentId,
+        agentType: a.agentType,
+        actionId: a.action.id,
+        actionName: a.action.name,
+        evidence,
+        ...(txHash !== undefined ? { txHash } : {}),
+        ...(exploitId !== undefined ? { exploitId } : {}),
+      };
+      records.push(base);
+    }
+  }
+  return { version: 'v1', records };
 }
 
 /**
@@ -232,12 +490,19 @@ function serializeAction(action: RecordedAction): Record<string, unknown> {
           id: action.action.id,
           name: action.action.name,
           params: serializeBigInts(action.action.params),
+          ...(action.action.metadata !== undefined
+            ? { metadata: serializeBigInts(action.action.metadata) }
+            : {}),
         }
       : null,
     result: action.result
       ? {
           ok: action.result.ok,
           error: action.result.error,
+          events: action.result.events ? serializeBigInts(action.result.events) : undefined,
+          balanceDeltas: action.result.balanceDeltas
+            ? serializeBigInts(action.result.balanceDeltas)
+            : undefined,
           gasUsed: action.result.gasUsed?.toString(),
           txHash: action.result.txHash,
         }
@@ -252,15 +517,17 @@ function serializeAction(action: RecordedAction): Record<string, unknown> {
  * @param ci - Whether running in CI mode (uses stable naming)
  * @returns A unique identifier for this run
  */
-export function generateRunId(scenarioName: string, ci = false): string {
+export function generateRunId(scenarioName: string, ci = false, runIdSuffix?: string): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
   if (ci) {
     // In CI mode, use a more stable naming convention
-    return `${scenarioName}-ci`;
+    return runIdSuffix ? `${scenarioName}-ci-${runIdSuffix}` : `${scenarioName}-ci`;
   }
 
-  return `${scenarioName}-${timestamp}`;
+  return runIdSuffix
+    ? `${scenarioName}-${timestamp}-${runIdSuffix}`
+    : `${scenarioName}-${timestamp}`;
 }
 
 /**

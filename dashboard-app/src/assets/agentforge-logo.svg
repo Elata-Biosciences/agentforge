@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="AgentForge logo">
+  <rect x="4" y="4" width="56" height="56" rx="12" fill="#12141b" stroke="#2a2e3a" stroke-width="4"/>
+  <path d="M18 45V19h28v7H26v5h16v7H26v7z" fill="#e8e8e8"/>
+  <path d="M45 45l-9-12 9-12h7l-9 12 9 12z" fill="#2ecc71"/>
+</svg>

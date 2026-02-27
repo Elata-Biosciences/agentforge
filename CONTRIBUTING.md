@@ -109,6 +109,20 @@ pnpm format
 
 ## Testing Guidelines
 
+### TDD Workflow (Required for Core Changes)
+
+For simulation-kernel, replay, gossip, query, and LLM-policy work, follow this sequence:
+
+1. Add or update tests first (`test/unit` and `test/integration`).
+2. Run the smallest relevant test subset.
+3. Implement code until tests pass.
+4. Run full validation:
+   - `pnpm typecheck`
+   - `pnpm test`
+   - `pnpm lint`
+
+This keeps deterministic and replay guarantees from regressing.
+
 ### Test Structure
 
 ```
@@ -185,6 +199,16 @@ Run coverage report:
 ```bash
 pnpm test:coverage
 ```
+
+### Optional Real OpenAI Integration Test
+
+By default, LLM integration tests use mocks. To run the live OpenAI test explicitly:
+
+```bash
+RUN_OPENAI_INTEGRATION_TEST=1 OPENAI_API_KEY=... pnpm test -- test/integration/llm-openai.optional.test.ts
+```
+
+This test is intentionally skipped unless both env variables are set.
 
 ## Pull Request Process
 

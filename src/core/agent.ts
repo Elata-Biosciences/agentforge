@@ -137,6 +137,15 @@ export abstract class BaseAgent {
   }
 
   /**
+   * Export the agent's full memory for observability/artifacts.
+   *
+   * This returns the in-memory object by reference; callers should treat it as read-only.
+   */
+  exportMemory(): AgentMemory {
+    return this.memory;
+  }
+
+  /**
    * Get a parameter value with type safety
    * @param key - The parameter key to retrieve
    * @param defaultValue - Default value if parameter is not set

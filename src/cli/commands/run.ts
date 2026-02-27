@@ -5,7 +5,7 @@ import { Command } from 'commander';
 import { SimulationEngine } from '../../core/engine.js';
 import { createLogger } from '../../core/logging.js';
 import { loadScenario } from '../../core/scenario.js';
-import type { RunOptions, RunResult, Scenario } from '../../core/types.js';
+import type { RunMode, RunOptions, RunResult, Scenario } from '../../core/types.js';
 import { createToyScenario } from '../../toy/toyScenario.js';
 import { output } from '../ui/output.js';
 
@@ -16,16 +16,47 @@ export const runCommand = new Command('run')
   .description('Run a simulation scenario')
   .argument('[scenario]', 'Path to scenario file (.ts)')
   .option('--toy', 'Run the built-in toy scenario')
-  .option('-s, --seed <number>', 'Random seed', Number.parseInt)
-  .option('-t, --ticks <number>', 'Number of ticks to simulate', Number.parseInt)
-  .option('--tick-seconds <number>', 'Simulated seconds per tick', Number.parseInt)
+  .option('--toy-traders <n>', 'Toy scenario: number of random traders', (v) =>
+    Number.parseInt(v, 10)
+  )
+  .option('--toy-momentum <n>', 'Toy scenario: number of momentum agents', (v) =>
+    Number.parseInt(v, 10)
+  )
+  .option('--toy-holders <n>', 'Toy scenario: number of holder agents', (v) =>
+    Number.parseInt(v, 10)
+  )
+  .option(
+    '--toy-chaos <n>',
+    'Toy scenario: number of chaos agents (non-deterministic only in mode=exploration)',
+    (v) => Number.parseInt(v, 10),
+    0
+  )
+  .option('-s, --seed <number>', 'Random seed', (v) => Number.parseInt(v, 10))
+  .option('-t, --ticks <number>', 'Number of ticks to simulate', (v) => Number.parseInt(v, 10))
+  .option('--tick-seconds <number>', 'Simulated seconds per tick', (v) => Number.parseInt(v, 10))
   .option('-o, --out <path>', 'Output directory', 'sim/results')
   .option('--output-path <path>', 'Exact output path (overrides --out, useful for CI)')
+  .option('--run-id-suffix <suffix>', 'Append suffix to runId (useful for CI sweeps)')
+  .option('--live', 'Enable live websocket event stream (best-effort)')
+  .option('--live-host <host>', 'Live websocket host/interface', '127.0.0.1')
+  .option('--live-port <port>', 'Live websocket port', (v) => Number.parseInt(v, 10), 8787)
+  .option('--capture-memory', 'Capture full agent memory to agent_memory.ndjson (artifacts)')
+  .option('--memory-sample-every <n>', 'Capture agent memory every N ticks (default: 1)', (v) =>
+    Number.parseInt(v, 10)
+  )
+  .option(
+    '--memory-max-bytes <n>',
+    'Max bytes per memory snapshot record (default: 262144, use "null" for unlimited)'
+  )
   .option('--ci', 'CI mode (no colors, strict exit codes)')
   .option('--summary', 'Print one-line summary (useful for CI logs)')
   .option('-v, --verbose', 'Verbose output')
   .option('--fork-url <url>', 'Fork from a network URL (for EVM simulations)')
-  .option('--snapshot-every <number>', 'Create snapshots every N ticks', Number.parseInt)
+  .option('--snapshot-every <number>', 'Create snapshots every N ticks', (v) =>
+    Number.parseInt(v, 10)
+  )
+  .option('--mode <mode>', 'Run mode: deterministic | exploration | replay')
+  .option('--replay-bundle <path>', 'Replay bundle path for mode=replay')
   .option('--watch', 'Re-run simulation when scenario file changes')
   .option('--json', 'Output results as JSON')
   .action(async (scenarioPath, options) => {
@@ -36,7 +67,7 @@ export const runCommand = new Command('run')
 
     // Create logger
     const logger = createLogger({
-      level: options.verbose ? 'debug' : 'info',
+      level: jsonOutput ? 'silent' : options.verbose ? 'debug' : 'info',
       ci,
     });
 
@@ -55,6 +86,10 @@ export const runCommand = new Command('run')
         scenario = createToyScenario({
           seed: options.seed,
           ticks: options.ticks,
+          traderCount: typeof options.toyTraders === 'number' ? options.toyTraders : undefined,
+          momentumCount: typeof options.toyMomentum === 'number' ? options.toyMomentum : undefined,
+          holderCount: typeof options.toyHolders === 'number' ? options.toyHolders : undefined,
+          chaosCount: typeof options.toyChaos === 'number' ? options.toyChaos : undefined,
         });
         if (!suppressOutput) {
           output.header('Running scenario: toy-market');
@@ -96,6 +131,12 @@ export const runCommand = new Command('run')
       // Build run options
       // --output-path takes precedence over --out for exact path control in CI
       const outDir = options.outputPath ? dirname(options.outputPath) : options.out;
+      const effectiveMode: RunMode =
+        options.mode === 'exploration' ||
+        options.mode === 'replay' ||
+        options.mode === 'deterministic'
+          ? (options.mode as RunMode)
+          : 'deterministic';
 
       const runOptions: RunOptions = {
         seed: options.seed,
@@ -104,6 +145,27 @@ export const runCommand = new Command('run')
         outDir,
         ci,
         verbose: options.verbose,
+        mode: effectiveMode,
+        replayBundlePath: options.replayBundle,
+        runIdSuffix: options.runIdSuffix,
+        live: options.live,
+        liveHost: options.liveHost,
+        livePort: options.livePort,
+        ...(options.captureMemory
+          ? {
+              memoryCapture: {
+                enabled: true,
+                sampleEveryTicks:
+                  typeof options.memorySampleEvery === 'number' ? options.memorySampleEvery : 1,
+                maxBytesPerRecord:
+                  typeof options.memoryMaxBytes === 'string' && options.memoryMaxBytes === 'null'
+                    ? null
+                    : typeof options.memoryMaxBytes === 'string'
+                      ? Number.parseInt(options.memoryMaxBytes, 10)
+                      : 262_144,
+              },
+            }
+          : {}),
       };
 
       // Store additional options for later use
@@ -116,11 +178,31 @@ export const runCommand = new Command('run')
         output.config('Ticks', String(runOptions.ticks ?? scenario.ticks));
         output.config('Tick Duration', `${runOptions.tickSeconds ?? scenario.tickSeconds}s`);
         output.config('Output', runOptions.outDir ?? 'sim/results');
+        output.config('Mode', effectiveMode);
+        if (runOptions.replayBundlePath) {
+          output.config('Replay Bundle', runOptions.replayBundlePath);
+        }
         if (forkUrl) {
           output.config('Fork URL', forkUrl);
         }
         if (snapshotEvery) {
           output.config('Snapshot Every', `${snapshotEvery} ticks`);
+        }
+        output.newline();
+
+        // Make the determinism boundary obvious
+        if (effectiveMode === 'deterministic') {
+          output.info('Mode: deterministic (seeded, no live LLM calls)');
+        } else if (effectiveMode === 'exploration') {
+          output.info('Mode: exploration (LLM/tool actions allowed; produces replay_bundle.json)');
+        } else if (effectiveMode === 'replay') {
+          output.info('Mode: replay (no live LLM calls; replays recorded actions/tool calls)');
+        } else {
+          output.warn(`Unknown mode: ${effectiveMode} (expected deterministic|exploration|replay)`);
+        }
+        if (effectiveMode === 'replay' && !runOptions.replayBundlePath) {
+          output.error('Replay mode requires --replay-bundle <path>');
+          process.exit(2);
         }
         output.newline();
       }
@@ -226,15 +308,24 @@ export const runCommand = new Command('run')
     /**
      * Print JSON results
      */
-    function printJsonResults(result: RunResult): void {
+    async function writeStdout(text: string): Promise<void> {
+      await new Promise<void>((resolve, reject) => {
+        process.stdout.write(text, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+
+    async function printJsonResults(result: RunResult): Promise<void> {
       // Convert bigint values to strings for JSON serialization
       const serializableMetrics: Record<string, string | number> = {};
       for (const [key, value] of Object.entries(result.finalMetrics)) {
         serializableMetrics[key] = typeof value === 'bigint' ? value.toString() : value;
       }
 
-      console.log(
-        JSON.stringify(
+      await writeStdout(
+        `${JSON.stringify(
           {
             success: result.success,
             runId: result.runId,
@@ -249,7 +340,7 @@ export const runCommand = new Command('run')
           },
           null,
           2
-        )
+        )}\n`
       );
     }
 
@@ -289,21 +380,22 @@ export const runCommand = new Command('run')
         const result = await runSimulation();
 
         if (jsonOutput) {
-          printJsonResults(result);
+          await printJsonResults(result);
         } else {
           printResults(result);
         }
 
-        // Exit with appropriate code
-        process.exit(result.success ? 0 : 1);
+        // Exit with appropriate code (allow stdout to flush first).
+        process.exitCode = result.success ? 0 : 1;
+        return;
       }
     } catch (error) {
       if (jsonOutput) {
-        console.log(
-          JSON.stringify({
+        await writeStdout(
+          `${JSON.stringify({
             success: false,
             error: error instanceof Error ? error.message : String(error),
-          })
+          })}\n`
         );
       } else {
         output.newline();
@@ -314,6 +406,7 @@ export const runCommand = new Command('run')
         }
       }
 
-      process.exit(2);
+      process.exitCode = 2;
+      return;
     }
   });

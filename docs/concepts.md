@@ -16,6 +16,10 @@ A **Scenario** is the complete specification of a simulation run. It defines:
 - **assertions**: Validations to run at end of simulation
 - **probes**: Custom metric probes (optional)
 - **checkpoints**: Checkpoint configuration (optional)
+- **gossip**: Communication channels and attention budgets (optional)
+- **query**: Budgeted world-query endpoints (optional)
+- **schedule**: Info and assumption events injected at configured ticks (optional)
+- **smoke**: Assumption perturbation checkpoints and divergence outputs (optional)
 
 ```typescript
 import { defineScenario } from '@elata-biosciences/agentforge';
@@ -154,6 +158,17 @@ This is achieved through:
 3. **Agent-derived RNG**: Each agent gets a per-tick derived RNG
 4. **Deterministic Action IDs**: IDs use counters, not timestamps
 5. **Deterministic Ordering**: Agent order is reproducible
+
+### Exploration/Replay Workflow (Legacy "Mode C")
+
+Some early notes call this "Mode C", but the preferred term is **exploration/replay workflow**.
+
+This introduces a two-step workflow:
+
+1. **Exploration run** records actions, message flows, and query traces into `replay_bundle.json`.
+2. **Replay run** reuses that bundle and executes without live LLM calls.
+
+This lets you discover exploit paths with exploratory policies and then regression-test those paths after contract changes.
 
 You can verify determinism by comparing artifact hashes:
 

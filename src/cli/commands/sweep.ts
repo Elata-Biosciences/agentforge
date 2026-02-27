@@ -164,6 +164,7 @@ export const sweepCommand = new Command('sweep')
             ticks,
             outDir: sweepDir,
             ci: true,
+            runIdSuffix: `seed-${seed}`,
           });
           return result;
         });

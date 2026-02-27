@@ -3,6 +3,8 @@
 AgentForge provides three reporting commands for analyzing simulation results:
 
 - `report` - Generate a report from a single run
+- `dashboard` - Generate a self-contained HTML dashboard for a single run
+- `extract-agent` - Convert a replay bundle into a deterministic agent class
 - `compare` - Diff two runs and highlight changes
 - `sweep` - Run multiple seeds and aggregate statistics
 
@@ -51,7 +53,63 @@ The generated `report.md` includes:
 8. **Failed Assertions** - If any
 9. **Determinism Fingerprint** - Artifact hashes for verification
 
+## Dashboard Command
+
+Generate a self-contained HTML dashboard from simulation artifacts:
+
+```bash
+forge-sim dashboard <runDir> [options]
+```
+
+### Options
+
+- `-o, --output <path>` - Output file path (default: dashboard.html in run directory)
+- `--no-git` - Skip git commit lookup
+
+### Notes
+
+- The dashboard embeds artifacts directly as JSON, so it works offline and without a backend.
+- It is designed to be opened locally (double-click the generated `dashboard.html`).
+- For very large runs, prefer filtering and paging (the dashboard renders only a bounded number of timeline rows).
+
+## Studio Report Blocks (`scenario.studio.report`)
+
+Scenarios can attach a report config that renders custom notebook-style blocks in Studio and static dashboards:
+
+```ts
+studio: {
+  report: {
+    v: 'v1',
+    blocks: [
+      { kind: 'markdown', markdown: '## Experiment Notes\n...' },
+      { kind: 'dataset', as: 'metrics_core', table: 'metrics', spec: { v: 'v1' } },
+      { kind: 'chart', chartType: 'line', dataset: 'metrics_core', xField: 'tick', yField: 'fees_collected_total' },
+    ],
+  },
+}
+```
+
+Useful block types:
+- `markdown` for narrative and hypotheses.
+- `dataset` for querying `metrics`, `actions`, or `evidence`.
+- `transform` for derived fields, rolling windows, buckets, and rank.
+- `chart` (`line`, `bar`, `donut`, `scatter`, `histogram`) for visualization.
+- `table` for inspectable raw rows.
+- `ml` for clustering/regression blocks.
+
+Tip: keep report schemas reusable via project helpers (for example `createNotebookReport`) and tune only scenario-specific metadata and metric fields.
 ## Compare Command
+
+## extract-agent Command
+
+Convert a recorded exploration trace (`replay_bundle.json`) into a deterministic agent class you can run in CI without any LLM calls.
+
+```bash
+forge-sim extract-agent sim/results/<run>/replay_bundle.json --agent-id ProviderBackedRedTeamAgent-0
+```
+
+This writes a TypeScript file (default: `sim/generated/ExtractedAgent.ts`) that subclasses `ActionSequenceAgent` and embeds the recorded action sequence.
+Use this when you want to turn a successful LLM exploit path into a cheap regression asset.
 
 Compare two simulation runs and generate a diff report:
 

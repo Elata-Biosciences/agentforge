@@ -37,6 +37,14 @@
     }
   },
   "files": {
-    "ignore": ["node_modules", "dist", "coverage", "docs"]
+    "ignore": [
+      "node_modules",
+      "dist",
+      "coverage",
+      "docs",
+      "dashboard-app",
+      "sim/results",
+      "src/cli/assets/dashboard-app"
+    ]
   }
 }

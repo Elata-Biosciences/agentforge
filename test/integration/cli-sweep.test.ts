@@ -76,6 +76,23 @@ describe('CLI: forge-sim sweep', () => {
     expect(reportContent).toContain('## Metric Statistics');
   }, 30000);
 
+  it('creates one run directory per seed (no overwrites)', async () => {
+    const outDir = join(testDir, 'sweep-results');
+    await execAsync(`npx tsx ${CLI_PATH} sweep --toy --seeds 1..3 --ticks 5 -o ${outDir}`);
+
+    const { readdir } = await import('node:fs/promises');
+    const dirs = await readdir(outDir);
+    const sweepDir = join(outDir, dirs[0] as string);
+
+    const entries = await readdir(sweepDir, { withFileTypes: true });
+    const runDirs = entries
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .filter((name) => name.startsWith('toy-market-ci-seed-'));
+
+    expect(runDirs.length).toBe(3);
+  }, 30000);
+
   it('outputs JSON when --json flag is provided', async () => {
     const outDir = join(testDir, 'sweep-results');
 

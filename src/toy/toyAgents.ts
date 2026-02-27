@@ -171,6 +171,55 @@ export class HolderAgent extends BaseAgent {
 }
 
 /**
+ * Chaos agent: intentionally uses non-deterministic randomness *only* in exploration mode.
+ * This is useful for stress testing the non-deterministic dashboard and tooling paths.
+ */
+export class ChaosAgent extends BaseAgent {
+  private readonly maxTradePercent: number;
+
+  constructor(id: string, params: Record<string, unknown> = {}) {
+    super(id, params);
+    this.maxTradePercent = this.getParam('maxTradePercent', 0.12);
+  }
+
+  async step(ctx: TickContext): Promise<Action | null> {
+    const world = ctx.world as ToyWorldState;
+    if (world.assets.length === 0) return null;
+    // Only introduce nondeterminism in exploration mode.
+    const r = ctx.mode === 'exploration' ? Math.random() : ctx.rng.nextFloat();
+    const action = r < 0.45 ? 'buy' : r < 0.9 ? 'sell' : 'hold';
+    if (action === 'hold') return null;
+
+    const pick =
+      ctx.mode === 'exploration'
+        ? world.assets[Math.floor(Math.random() * world.assets.length)]!
+        : ctx.rng.pickOne(world.assets);
+
+    if (action === 'buy') {
+      const maxSpend = world.agentCash * this.maxTradePercent;
+      const amount = Math.floor(maxSpend / pick.price);
+      if (amount <= 0) return null;
+      return {
+        id: this.generateActionId('buy', ctx.tick),
+        name: 'buy',
+        params: { asset: pick.name, amount },
+        metadata: { chaos: true },
+      };
+    }
+
+    const holdings = world.agentHoldings[pick.name] ?? 0;
+    const amount = Math.floor(holdings * this.maxTradePercent);
+    if (amount <= 0) return null;
+    return {
+      id: this.generateActionId('sell', ctx.tick),
+      name: 'sell',
+      params: { asset: pick.name, amount },
+      metadata: { chaos: true },
+    };
+  }
+}
+
+/**
  * Value agent that buys undervalued assets and sells overvalued ones
  * Uses a simple mean-reversion strategy
  */

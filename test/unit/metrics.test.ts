@@ -209,6 +209,24 @@ describe('MetricsCollector', () => {
       const csv = collector.toCSV();
       expect(csv).toContain('12345');
     });
+
+    it('includes merged extra columns across samples', () => {
+      const collector = new MetricsCollector({ sampleEveryTicks: 1 });
+      mockPack.setMetrics({ a: 1 });
+      collector.sample(0, 1000, mockPack);
+      collector.mergeIntoSample(0, { 'probe.x': 10 });
+
+      mockPack.setMetrics({ a: 2 });
+      collector.sample(1, 2000, mockPack);
+      collector.mergeIntoSample(1, { 'probe.y': 20 });
+
+      const csv = collector.toCSV();
+      // Headers should include both probe columns even if they appear on different ticks.
+      expect(csv.split('\n')[0]).toContain('probe.x');
+      expect(csv.split('\n')[0]).toContain('probe.y');
+      expect(csv).toContain('10');
+      expect(csv).toContain('20');
+    });
   });
 
   describe('getMetricStats', () => {

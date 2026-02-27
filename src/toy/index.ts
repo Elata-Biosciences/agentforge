@@ -16,6 +16,7 @@ export {
   MomentumAgent,
   HolderAgent,
   ValueAgent,
+  ChaosAgent,
 } from './toyAgents.js';
 
 export { createToyScenario, toyScenario } from './toyScenario.js';

@@ -1,5 +1,18 @@
 import type { BaseAgent } from './agent.js';
-import type { Assertion, MetricsConfig, Pack, Scenario } from './types.js';
+import type {
+  Assertion,
+  CheckpointConfig,
+  ExplorationConfig,
+  GossipConfig,
+  MetricsConfig,
+  Pack,
+  ProbeConfig,
+  QueryConfig,
+  ReplayConfig,
+  Scenario,
+  ScheduledEvent,
+  SmokeTestConfig,
+} from './types.js';
 
 /**
  * Options for defining a scenario
@@ -21,6 +34,26 @@ export interface DefineScenarioOptions {
   metrics?: MetricsConfig;
   /** Assertions to validate at the end */
   assertions?: Assertion[];
+  /** Probes for custom metric sampling */
+  probes?: ProbeConfig[];
+  /** Sample probes every N ticks (default: same as metrics) */
+  probeEveryTicks?: number;
+  /** Checkpoint configuration */
+  checkpoints?: CheckpointConfig;
+  /** Gossip configuration */
+  gossip?: GossipConfig;
+  /** Query configuration */
+  query?: QueryConfig;
+  /** Scheduled events */
+  schedule?: ScheduledEvent[];
+  /** Replay configuration */
+  replay?: ReplayConfig;
+  /** Smoke testing configuration */
+  smoke?: SmokeTestConfig;
+  /** Exploration configuration */
+  exploration?: ExplorationConfig;
+  /** Studio/report configuration */
+  studio?: Scenario['studio'];
 }
 
 /**
@@ -77,6 +110,16 @@ export function defineScenario(options: DefineScenarioOptions): Scenario {
     agents,
     metrics = DEFAULTS.metrics,
     assertions = [],
+    probes,
+    probeEveryTicks,
+    checkpoints,
+    gossip,
+    query,
+    schedule,
+    replay,
+    smoke,
+    exploration,
+    studio,
   } = options;
 
   // Validate inputs
@@ -100,7 +143,7 @@ export function defineScenario(options: DefineScenarioOptions): Scenario {
     params: def.params ?? {},
   }));
 
-  return {
+  const base: Scenario = {
     name,
     seed,
     ticks,
@@ -109,6 +152,19 @@ export function defineScenario(options: DefineScenarioOptions): Scenario {
     agents: agentConfigs,
     metrics,
     assertions,
+  };
+  return {
+    ...base,
+    ...(probes ? { probes } : {}),
+    ...(probeEveryTicks !== undefined ? { probeEveryTicks } : {}),
+    ...(checkpoints ? { checkpoints } : {}),
+    ...(gossip ? { gossip } : {}),
+    ...(query ? { query } : {}),
+    ...(schedule ? { schedule } : {}),
+    ...(replay ? { replay } : {}),
+    ...(smoke ? { smoke } : {}),
+    ...(exploration ? { exploration } : {}),
+    ...(studio ? { studio } : {}),
   };
 }
 

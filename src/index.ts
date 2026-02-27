@@ -16,6 +16,40 @@ export { SimulationEngine, runScenario } from './core/engine.js';
 export { ArtifactsWriter } from './core/artifacts.js';
 export { MetricsCollector, createMetricsCollector } from './core/metrics.js';
 export { createLogger, createChildLogger, LogEvents } from './core/logging.js';
+export {
+  InMemoryActionValidatorRegistry,
+  createDefaultActionRegistry,
+} from './core/actionRegistry.js';
+export {
+  applyAssumptionPatches,
+  computeDivergenceScore,
+  createSmokeDivergenceResult,
+} from './core/smoke.js';
+export {
+  LlmActionIntentSchema,
+  LlmPlanIntentSchema,
+  ReplayBundleSchema,
+} from './core/llmSchemas.js';
+export { GossipBus, createDefaultGossipConfig } from './gossip/bus.js';
+export { QueryApi } from './query/queryApi.js';
+export { QueryBudgetManager } from './query/budgetManager.js';
+export { ReplayRecorder, loadReplayBundle, saveReplayBundle } from './replay/bundle.js';
+export { ArbitraryExecutor } from './exploration/arbitraryExecutor.js';
+export { LlmPolicyAgent } from './agents/llm/llmPolicyAgent.js';
+export {
+  PersonaLlmAgentBase,
+  type PersonaLlmAgentParams,
+  type PersonaProfile,
+} from './agents/llm/personaLlmAgentBase.js';
+export { ActionSequenceAgent } from './agents/deterministic/actionSequenceAgent.js';
+export { OpenAiChatClient } from './agents/llm/openaiClient.js';
+export {
+  AnthropicProviderClient,
+  OpenAiCompatibleProviderClient,
+  OpenAiProviderClient,
+  createLlmProviderClient,
+} from './agents/llm/providers/index.js';
+export type { LlmClient, LlmCompletionInput, LlmProviderConfig } from './agents/llm/types.js';
 
 // Error exports
 export {
@@ -94,6 +128,45 @@ export type {
   MetricsSample,
   Address,
   FundingConfig,
+  RunMode,
+  QueryBudget,
+  QueryRequest,
+  QueryResult,
+  QueryEndpoint,
+  QueryConfig,
+  QueryContext,
+  QueryBudgetState,
+  CapabilityManifest,
+  CapabilityContract,
+  CapabilityActionTemplate,
+  GossipChannelType,
+  GossipChannel,
+  AudienceSpec,
+  MessageEnvelope,
+  MessagePayload,
+  GossipMessage,
+  DeliveryEvent,
+  GossipBudgets,
+  GossipContext,
+  GossipConfig,
+  ScheduledEvent,
+  ReplayActionRecord,
+  ReplayMessageRecord,
+  ReplayQueryRecord,
+  ReplayArbitraryExecutionRecord,
+  ReplayBundle,
+  ReplayConfig,
+  AssumptionPatch,
+  SmokeCheckpointConfig,
+  SmokeDivergenceResult,
+  SmokeTestConfig,
+  ActionValidationContext,
+  ActionValidator,
+  ActionValidatorRegistry,
+  ArbitraryTxIntent,
+  RpcCallIntent,
+  ExplorationAllowlistPolicy,
+  ExplorationConfig,
 } from './core/types.js';
 
 export type {
