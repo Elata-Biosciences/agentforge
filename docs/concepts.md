@@ -45,11 +45,13 @@ export default defineScenario({
 A **Tick** is one discrete time step in the simulation. During each tick:
 
 1. The pack is notified via `onTick(tick, timestamp)`
-2. Agents are scheduled in a deterministic order
-3. Each agent observes world state and decides an action
-4. Actions are executed through the pack
-5. Metrics are sampled (at configured intervals)
-6. Checkpoints are written (if configured)
+2. Scheduled events are applied (`gossip_inject`, world overlays, etc.)
+3. Gossip deliveries for the tick are processed
+4. Agents are scheduled in a deterministic order
+5. Each agent observes state and decides an action
+6. Actions are validated/executed (`QueryWorld`, `PostMessage`, `RpcCall`, pack actions)
+7. Metrics are sampled (at configured intervals)
+8. Optional artifacts are captured (memory snapshots, smoke divergence, checkpoints)
 
 Tick timing is simulated, not real-time. The `tickSeconds` parameter controls how much simulated time passes between ticks.
 
@@ -191,6 +193,10 @@ results/<scenario>-<timestamp>/
 ├── summary.json          # Run metadata, final metrics, assertion results
 ├── metrics.csv           # Time-series metrics data
 ├── actions.ndjson        # All agent actions (newline-delimited JSON)
+├── gossip.ndjson         # Gossip posts/deliveries (if gossip enabled)
+├── agent_memory.ndjson   # Agent memory snapshots (if capture enabled)
+├── replay_bundle.json    # Exploration traces for replay mode
+├── smoke_results.json    # Assumption-perturbation divergence results (if configured)
 ├── config_resolved.json  # Resolved scenario configuration
 ├── report.md             # Generated report (if requested)
 └── checkpoints/          # Checkpoint snapshots (if configured)

@@ -48,6 +48,9 @@ results/<scenario>-<timestamp>/
 
 Plus reporting commands:
 - `forge-sim report <runDir>` — Generate a Markdown report
+- `forge-sim dashboard <runDir>` — Build a static dashboard folder for a run
+- `forge-sim studio` — Launch multi-run Studio (sessions, paging, analytics)
+- `forge-sim serve <runDir>` — Serve a generated dashboard over HTTP
 - `forge-sim compare <runA> <runB>` — Diff two runs
 - `forge-sim sweep <scenario> --seeds 1..50` — Multi-seed statistical analysis
 
@@ -235,10 +238,13 @@ forge-sim init [path]              # Initialize simulation folder
 forge-sim run <scenario>           # Execute a scenario
 forge-sim run --toy                # Run built-in demo
 forge-sim report <runDir>          # Generate report from artifacts
-forge-sim dashboard <runDir>       # Generate self-contained dashboard.html
+forge-sim dashboard <runDir>       # Generate static dashboard/ for a run
+forge-sim serve <runDir>           # Serve run dashboard over HTTP
+forge-sim studio                   # Launch local Studio UI
 forge-sim extract-agent <bundle>   # Generate deterministic agent from replay_bundle.json
 forge-sim compare <runA> <runB>    # Compare two runs
 forge-sim sweep <scenario>         # Multi-seed statistical run
+forge-sim matrix <scenario>        # Multi-variant matrix run and comparison report
 forge-sim doctor                   # Check dependencies
 forge-sim types                    # Generate types from Foundry artifacts
 ```
@@ -250,6 +256,8 @@ Options for `run`:
 --out <dir>          # Output directory
 --mode <mode>        # deterministic | exploration | replay
 --replay-bundle <p>  # Replay bundle path for mode=replay
+--capture-memory     # Persist agent memory snapshots to agent_memory.ndjson
+--live               # Enable live websocket event stream
 --ci                 # CI mode (no colors, stable naming)
 --verbose            # Verbose logging
 --json               # Output results as JSON
@@ -319,6 +327,7 @@ import { ToyPack, RandomTraderAgent, MomentumAgent } from '@elata-biosciences/ag
 ## Documentation
 
 - [Core Concepts](docs/concepts.md) — Scenarios, agents, ticks, packs, determinism
+- [CLI Reference](docs/cli.md) — Full command/option coverage for every `forge-sim` command
 - [CI Integration](docs/ci.md) — GitHub Actions, GitLab CI, exit codes
 - [Reporting](docs/reporting.md) — Report, compare, and sweep commands
 - [LLM/Gossip Workflow](docs/llm-gossip-replay.md) — Exploration, replay, and information diffusion
@@ -335,9 +344,9 @@ import { ToyPack, RandomTraderAgent, MomentumAgent } from '@elata-biosciences/ag
 
 ## Roadmap
 
-- **Variant runner**: Run scenarios against multiple contract versions
-- **Replay and shrinking**: Replay specific ticks, minimize failing cases
-- **Extended ordering policies**: Custom ordering, bundle simulation
+- **Replay minimization**: shrink failing replay bundles to minimal reproductions
+- **Extended ordering policies**: custom ordering, bundle simulation
+- **Richer Studio analytics**: larger-run workflows and stronger cross-run slicing
 
 ## Used By
 

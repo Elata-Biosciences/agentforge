@@ -112,6 +112,13 @@ Or use the sweep command for seed variation:
   run: npx forge-sim sweep sim/scenarios/stress.ts --seeds 1..50 --ci
 ```
 
+Or use matrix runs for multi-variant checks:
+
+```yaml
+- name: Variant matrix
+  run: npx forge-sim matrix sim/scenarios/stress.ts --variants sim/variants.ts --seeds 1..5 --ci
+```
+
 ## Comparing Runs
 
 Use the compare command to diff runs:
@@ -132,6 +139,13 @@ Generate reports for CI artifacts:
   run: |
     npx forge-sim run sim/scenarios/stress.ts --ci --seed 42
     npx forge-sim report sim/results/stress-ci
+```
+
+Generate static dashboards when you need artifact UIs:
+
+```yaml
+- name: Build dashboard
+  run: npx forge-sim dashboard sim/results/stress-ci
 ```
 
 ## Artifact Structure
@@ -205,6 +219,8 @@ Run doctor before simulations to verify environment:
 |----------|-------------|
 | `CI` | Set to `true` to enable CI mode automatically |
 | `FORGE_SIM_OUT` | Default output directory |
+| `AGENTFORGE_AUTONOMOUS_RPC_POLICY` | Exploration RPC policy override (`strict` or `aggressive`) |
+| `AGENTFORGE_DISABLE_AUTONOMOUS_RPC` | Disable autonomous exploration RPC when set to `1` |
 
 ## Troubleshooting
 

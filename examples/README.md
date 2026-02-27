@@ -8,7 +8,7 @@ Run any example with:
 
 ```bash
 # Using the CLI
-npx agentforge run examples/<example-name>/scenario.ts
+npx forge-sim run examples/<example-name>/scenario.ts
 
 # Or directly with tsx
 npx tsx examples/<example-name>/scenario.ts
@@ -35,7 +35,7 @@ npx tsx examples/<example-name>/scenario.ts
 A minimal simulation setup using the built-in toy market pack and standard agent types. This is the best place to start.
 
 ```bash
-npx agentforge run examples/basic-simulation/scenario.ts
+npx forge-sim run examples/basic-simulation/scenario.ts
 ```
 
 **What it demonstrates:**
@@ -81,7 +81,7 @@ const scenario = defineScenario({
 Learn how to create custom agents with advanced features like memory, cooldowns, and parameterized behavior.
 
 ```bash
-npx agentforge run examples/custom-agent/scenario.ts
+npx forge-sim run examples/custom-agent/scenario.ts
 ```
 
 **What it demonstrates:**
@@ -121,7 +121,7 @@ npx agentforge run examples/custom-agent/scenario.ts
 How to use assertions to validate simulation outcomes and integrate with CI pipelines.
 
 ```bash
-npx agentforge run examples/assertions/scenario.ts
+npx forge-sim run examples/assertions/scenario.ts
 ```
 
 **What it demonstrates:**
@@ -150,7 +150,7 @@ assertions: [
 
 ```yaml
 - name: Run simulation tests
-  run: npx agentforge run examples/assertions/scenario.ts --ci
+  run: npx forge-sim run examples/assertions/scenario.ts --ci
   # Exit code 0 = all assertions pass
   # Exit code 1 = assertion failures
 ```
@@ -164,7 +164,7 @@ assertions: [
 Detailed metrics collection, CSV export, and statistical analysis.
 
 ```bash
-npx agentforge run examples/metrics-tracking/scenario.ts
+npx forge-sim run examples/metrics-tracking/scenario.ts
 ```
 
 **What it demonstrates:**
@@ -206,10 +206,10 @@ Canonical reference for real-provider LLM runs with gossip messages and determin
 
 ```bash
 # Non-deterministic, live provider behavior
-npx agentforge run examples/llm-gossip/scenario.ts --mode exploration
+npx forge-sim run examples/llm-gossip/scenario.ts --mode exploration
 
 # Deterministic baseline (no live provider calls)
-npx agentforge run examples/llm-gossip/scenario.ts --mode deterministic
+npx forge-sim run examples/llm-gossip/scenario.ts --mode deterministic
 ```
 
 **What it demonstrates:**
@@ -231,19 +231,22 @@ examples/<name>/results/
 ├── metrics.csv           # Time-series data for analysis
 ├── actions.ndjson        # Every action taken (newline-delimited JSON)
 ├── config_resolved.json  # Final resolved configuration
-└── run.log               # Structured execution logs
+├── replay_bundle.json    # Exploration traces (mode=exploration)
+├── gossip.ndjson         # Gossip bus artifacts (if enabled)
+└── agent_memory.ndjson   # Agent memory snapshots (if capture enabled)
 ```
 
 ### summary.json
 
 ```json
 {
-  "scenario": "basic-simulation",
+  "runId": "basic-simulation-ci",
+  "scenarioName": "basic-simulation",
   "seed": 42,
   "ticks": 50,
   "success": true,
-  "duration_ms": 234,
-  "metrics": {
+  "durationMs": 234,
+  "finalMetrics": {
     "totalVolume": 15234.56,
     "price_TOKEN": 102.34
   }
@@ -277,7 +280,7 @@ Use these examples as templates:
 
 3. **Run and iterate:**
    ```bash
-   npx agentforge run my-scenario/scenario.ts --verbose
+   npx forge-sim run my-scenario/scenario.ts --verbose
    ```
 
 4. **Analyze results:**

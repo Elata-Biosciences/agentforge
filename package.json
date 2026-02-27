@@ -111,7 +111,7 @@
     "vitest": "^2.1.0"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,jsx}": ["biome check --write", "biome format --write"],
-    "*.{json,md,yml,yaml}": ["biome format --write"]
+    "*.{ts,tsx,js,jsx}": ["biome check --write .", "biome format --write ."],
+    "*.{json,md,yml,yaml}": ["biome format --write ."]
   }
 }

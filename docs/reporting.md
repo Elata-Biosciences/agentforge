@@ -1,12 +1,15 @@
 # Reporting
 
-AgentForge provides three reporting commands for analyzing simulation results:
+AgentForge provides several analysis and visualization commands for simulation results:
 
 - `report` - Generate a report from a single run
-- `dashboard` - Generate a self-contained HTML dashboard for a single run
+- `dashboard` - Generate a static dashboard folder for a single run
+- `serve` - Serve a generated run dashboard over HTTP
+- `studio` - Launch multi-run Studio with sessions and analytics APIs
 - `extract-agent` - Convert a replay bundle into a deterministic agent class
 - `compare` - Diff two runs and highlight changes
 - `sweep` - Run multiple seeds and aggregate statistics
+- `matrix` - Run one scenario across variants and compare outcomes
 
 ## Report Command
 
@@ -55,7 +58,7 @@ The generated `report.md` includes:
 
 ## Dashboard Command
 
-Generate a self-contained HTML dashboard from simulation artifacts:
+Generate a static dashboard from simulation artifacts:
 
 ```bash
 forge-sim dashboard <runDir> [options]
@@ -63,14 +66,46 @@ forge-sim dashboard <runDir> [options]
 
 ### Options
 
-- `-o, --output <path>` - Output file path (default: dashboard.html in run directory)
+- `-o, --output <path>` - Output directory path (default: `dashboard/` in run directory)
 - `--no-git` - Skip git commit lookup
 
 ### Notes
 
-- The dashboard embeds artifacts directly as JSON, so it works offline and without a backend.
-- It is designed to be opened locally (double-click the generated `dashboard.html`).
-- For very large runs, prefer filtering and paging (the dashboard renders only a bounded number of timeline rows).
+- Output is a folder (`index.html`, assets, optional `data.json`) under `runDir/dashboard/`.
+- For large runs, dashboard generation may sample artifacts and include a warning in UI metadata.
+- For full large-run inspection, use `forge-sim studio` paged APIs instead of loading full artifacts.
+
+## Serve Command
+
+Serve a generated run dashboard over HTTP (useful when `file://` loading is restricted by browser policy):
+
+```bash
+forge-sim serve <runDir> [options]
+```
+
+### Options
+
+- `--host <host>` - Bind host/interface (default: `127.0.0.1`)
+- `--port <port>` - Bind port, use `0` for ephemeral free port (default: `8788`)
+- `--open` - Open browser
+- `--check` - Start, self-check one request, then exit
+
+## Studio Command
+
+Launch Studio for browsing many runs, running scenarios, and querying paged artifacts:
+
+```bash
+forge-sim studio [options]
+```
+
+### Options
+
+- `--root <dir>` - Results root (repeatable; default: `sim/results`)
+- `--host <host>` - Bind host/interface (default: `127.0.0.1`)
+- `--port <port>` - Bind port, use `0` for ephemeral free port (default: `8790`)
+- `--live` - Enable live websocket proxy for in-progress runs
+- `--open` - Open browser
+- `--check` - Start, self-check `/api/health`, then exit
 
 ## Studio Report Blocks (`scenario.studio.report`)
 
@@ -98,9 +133,10 @@ Useful block types:
 - `ml` for clustering/regression blocks.
 
 Tip: keep report schemas reusable via project helpers (for example `createNotebookReport`) and tune only scenario-specific metadata and metric fields.
+
 ## Compare Command
 
-## extract-agent Command
+## Extract-Agent Command
 
 Convert a recorded exploration trace (`replay_bundle.json`) into a deterministic agent class you can run in CI without any LLM calls.
 
@@ -244,6 +280,35 @@ This helps identify:
 - **Central tendency**: P50 (median) and mean
 - **Tail risk**: P05/P95 for extreme outcomes
 - **Variability**: StdDev for consistency
+
+## Matrix Command
+
+Run a scenario over multiple variants and seeds, then generate cross-variant comparisons:
+
+```bash
+forge-sim matrix <scenario> [options]
+```
+
+### Options
+
+- `--variants <file>` - Variant file path (default: `variants.ts`)
+- `--seeds <range>` - Seeds per variant (`42`, `1..5`, `1,7,11`)
+- `-t, --ticks <n>` - Override ticks
+- `-o, --out <path>` - Output root (default: `sim/results/matrix`)
+- `--ci` - CI mode
+- `--json` - Emit JSON summary
+
+### Output
+
+Each matrix run writes:
+
+```
+sim/results/matrix/<scenario>-<timestamp>/
+├── <variant-a>/...
+├── <variant-b>/...
+├── summary.csv
+└── report.md
+```
 
 ## Workflow Examples
 
