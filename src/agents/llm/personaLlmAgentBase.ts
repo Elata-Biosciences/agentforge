@@ -59,14 +59,14 @@ export class PersonaLlmAgentBase extends BaseAgent {
       complete: async () => '{"name":"DoNothing","params":{},"rationale":"fallback"}',
     };
     this.registry = registry ?? createDefaultActionRegistry();
-    this.maxContextChars = this.getParam('maxContextChars', 12_000);
+    this.maxContextChars = this.getParam('maxContextChars', 16_000);
     this.model = this.getParam('model', 'gpt-4o-mini');
     this.toolHints = this.getParam('toolHints', '');
     this.persona = this.resolvePersona(this.getParam('persona', {}));
     this.remember('persona_profile', this.persona);
   }
 
-  async step(ctx: TickContext): Promise<Action | null> {
+  async step(ctx: TickContext): Promise<Action | Action[] | null> {
     const observedMessages = this.observeMessages(ctx);
     const observation = this.buildObservation(ctx, observedMessages);
     const plan = this.orient(observation, ctx, observedMessages);
@@ -85,47 +85,53 @@ export class PersonaLlmAgentBase extends BaseAgent {
       user: `${this.userPrompt(observation, plan)}\nplan=${safeJson(parsedPlan ?? { fallback: true })}`,
     });
 
-    const parsed = this.parseDecision(rawDecision) ?? this.parseDecision(rawPlan);
-    if (!parsed) {
+    const parsedList = this.parseDecisions(rawDecision) ?? this.parseDecisions(rawPlan);
+    if (!parsedList || parsedList.length === 0) {
       return null;
     }
 
-    const metadata = {
-      personaId: parsed.metadata?.personaId ?? this.persona.id,
-      ...(parsed.metadata?.intentTag ? { intentTag: parsed.metadata.intentTag } : {}),
-      ...(parsed.rationale ? { rationale: parsed.rationale } : {}),
-      ...(parsed.metadata?.confidence !== undefined
-        ? { confidence: parsed.metadata.confidence }
-        : {}),
-    };
-    const action: Action = {
-      id: this.generateActionId(parsed.name, ctx.tick),
-      name: parsed.name,
-      params: parsed.params,
-      metadata,
-    };
+    const actions: Action[] = [];
+    for (const parsed of parsedList) {
+      const metadata = {
+        personaId: parsed.metadata?.personaId ?? this.persona.id,
+        ...(parsed.rationale ? { rationale: parsed.rationale } : {}),
+        ...(parsed.metadata?.confidence !== undefined
+          ? { confidence: parsed.metadata.confidence }
+          : {}),
+      };
+      const action: Action = {
+        id: this.generateActionId(parsed.name, ctx.tick),
+        name: parsed.name,
+        params: parsed.params,
+        metadata,
+      };
 
-    const validation = this.registry.validate(action, {
-      mode: ctx.mode ?? 'deterministic',
-      world: ctx.world,
-    });
-    if (!validation.ok) {
-      this.remember('last_rejection', validation.error ?? 'invalid_action');
-      this.recordOutcome(`rejected:${validation.error ?? 'invalid_action'}`);
-      return null;
+      const validation = this.registry.validate(action, {
+        mode: ctx.mode ?? 'deterministic',
+        world: ctx.world,
+      });
+      if (!validation.ok) {
+        this.remember('last_rejection', validation.error ?? 'invalid_action');
+        this.recordOutcome(`rejected:${validation.error ?? 'invalid_action'}`);
+        continue;
+      }
+      actions.push(action);
     }
 
-    this.remember('last_action', action.name);
-    this.recordAction(action.name, ctx.tick);
+    if (actions.length === 0) return null;
+
+    const primary = actions[0]!;
+    this.remember('last_action', primary.name);
+    this.recordAction(primary.name, ctx.tick);
     this.recordOutcome('action_selected');
     this.remember('last_observation', observation.slice(0, 2000));
     this.remember('last_persona_intent', {
       tick: ctx.tick,
       personaId: this.persona.id,
-      action: action.name,
-      rationale: parsed.rationale ?? null,
+      action: primary.name,
+      rationale: parsedList[0]?.rationale ?? null,
     });
-    return action;
+    return actions.length === 1 ? actions[0]! : actions;
   }
 
   protected systemPrompt(stage: 'plan' | 'act'): string {
@@ -149,11 +155,12 @@ export class PersonaLlmAgentBase extends BaseAgent {
       '- arbitrary_tx: {"to":"0x... or ContractAlias","data":"0x...","value":"0x0"}',
       '- ContractCall: {"contract":"Alias","function":"fn","args":[],"value":"0x0"}',
       '- ContractRead: {"contract":"Alias","function":"viewFn","args":[]}',
-      'Return STRICT JSON: {"name":"ActionName","params":{},"rationale":"...","metadata":{"personaId":"...","intentTag":"...","confidence":0.0}}',
+      'You may return a single action or multiple actions per turn: {"actions":[{...},{...}]} (max 3).',
+      'Return STRICT JSON: {"name":"ActionName","params":{},"rationale":"...","metadata":{"personaId":"...","confidence":0.0}}',
       `Persona directive: ${personaLine}`,
       stage === 'plan'
         ? 'Stage PLAN: return STRICT JSON {"hypothesis":"...","expectedEffect":"...","preferredActionFamily":"QueryWorld|RpcCall|PostMessage|ContractCall|ContractRead|ProtocolAction","confidence":0.0}'
-        : 'Stage ACT: return STRICT JSON action {"name":"...","params":{},"rationale":"...","metadata":{"personaId":"...","intentTag":"...","confidence":0.0}}',
+        : 'Stage ACT: return STRICT JSON action or actions array',
     ].join(' ');
 
     const hints = this.toolHints.trim();
@@ -195,23 +202,29 @@ export class PersonaLlmAgentBase extends BaseAgent {
 
   private buildObservation(ctx: TickContext, messages: GossipMessage[]): string {
     const worldDelta = this.worldDeltaSummary(ctx.world);
-    const worldSnapshot = safeJson(ctx.world).slice(0, 4000);
+    const worldSnapshot = safeJson(ctx.world).slice(0, 6000);
     const highSignalMessages = messages
       .slice(-8)
-      .map((m) => `[${m.envelope.channelId}] ${m.payload.text}`)
+      .map((m) => `[${m.envelope.channelId}] ${m.envelope.authorAgentId}: ${m.payload.text}`)
       .join('\n');
     const queryState = ctx.query?.budget
       ? `queryBudget=${JSON.stringify(ctx.query.budget)}`
       : 'queryBudget=none';
     const outcomeMemory = this.recall<string[]>('recent_outcomes', [])?.join('\n') ?? '';
     const actionMemory = this.recall<string[]>('recent_actions', [])?.join('\n') ?? '';
-    const lastResult = ctx.lastResult ? safeJson(ctx.lastResult).slice(0, 2000) : 'null';
+    const lastResult = ctx.lastResult ? safeJson(ctx.lastResult).slice(0, 3000) : 'null';
     const capabilities = ctx.capabilities
       ? safeJson({
           tools: ctx.capabilities.tools,
           queryEndpoints: ctx.capabilities.queryEndpoints,
-          contracts: ctx.capabilities.contracts.map((c) => c.alias),
-        }).slice(0, 2500)
+          contracts: ctx.capabilities.contracts.map((c) => ({
+            alias: c.alias,
+            ...(c.address ? { address: c.address } : {}),
+            ...(c.description ? { description: c.description } : {}),
+            ...(c.callable?.length ? { callable: c.callable } : {}),
+          })),
+          actionTemplates: ctx.capabilities.actionTemplates,
+        }).slice(0, 4000)
       : 'none';
     return `tick=${ctx.tick}\nmode=${ctx.mode ?? 'deterministic'}\npersona=${this.persona.id}\n${queryState}\nlastResult=${lastResult}\nworldSnapshot=${worldSnapshot}\nworldDelta=${worldDelta}\nrecentActions=${actionMemory}\nrecentOutcomes=${outcomeMemory}\ncapabilities=${capabilities}\nmessages=${highSignalMessages}`.slice(
       0,
@@ -246,43 +259,60 @@ export class PersonaLlmAgentBase extends BaseAgent {
       ),
       recentActions: this.recall<string[]>('recent_actions', []) ?? [],
       recentOutcomes: this.recall<string[]>('recent_outcomes', []) ?? [],
-      lastWorldFingerprint: this.worldFingerprint(ctx.world),
+      lastWorldFingerprint: safeJson(ctx.world).slice(0, 512),
       lastOutcome: `Observed ${Math.min(observation.length, this.maxContextChars)} chars of context`,
     };
     this.remember('plan_state', next);
     return next;
   }
 
-  private parseDecision(rawDecision: string): {
+  private parseDecisions(rawDecision: string): Array<{
     name: string;
     params: Record<string, unknown>;
     rationale?: string;
-    metadata?: { personaId?: string; intentTag?: string; confidence?: number };
-  } | null {
+    metadata?: { personaId?: string; confidence?: number };
+  }> | null {
     try {
       const normalized = rawDecision.trim();
-      const asJson = normalized.startsWith('{') ? normalized : extractJsonObject(normalized);
-      const parsed = LlmActionIntentSchema.parse(JSON.parse(asJson));
-      const metadata =
-        parsed.metadata !== undefined
-          ? {
-              ...(parsed.metadata.personaId !== undefined
-                ? { personaId: parsed.metadata.personaId }
-                : {}),
-              ...(parsed.metadata.intentTag !== undefined
-                ? { intentTag: parsed.metadata.intentTag }
-                : {}),
-              ...(parsed.metadata.confidence !== undefined
-                ? { confidence: parsed.metadata.confidence }
-                : {}),
-            }
-          : undefined;
-      return {
-        name: parsed.name,
-        params: parsed.params,
-        ...(parsed.rationale !== undefined ? { rationale: parsed.rationale } : {}),
-        ...(metadata !== undefined ? { metadata } : {}),
-      };
+      const asJson =
+        normalized.startsWith('{') || normalized.startsWith('[')
+          ? normalized
+          : extractJsonObject(normalized);
+      const raw = JSON.parse(asJson);
+
+      const items: unknown[] = Array.isArray(raw?.actions) ? raw.actions : [raw];
+      const results: Array<{
+        name: string;
+        params: Record<string, unknown>;
+        rationale?: string;
+        metadata?: { personaId?: string; confidence?: number };
+      }> = [];
+
+      for (const item of items.slice(0, 3)) {
+        try {
+          const parsed = LlmActionIntentSchema.parse(item);
+          const metadata =
+            parsed.metadata !== undefined
+              ? {
+                  ...(parsed.metadata.personaId !== undefined
+                    ? { personaId: parsed.metadata.personaId }
+                    : {}),
+                  ...(parsed.metadata.confidence !== undefined
+                    ? { confidence: parsed.metadata.confidence }
+                    : {}),
+                }
+              : undefined;
+          results.push({
+            name: parsed.name,
+            params: parsed.params,
+            ...(parsed.rationale !== undefined ? { rationale: parsed.rationale } : {}),
+            ...(metadata !== undefined ? { metadata } : {}),
+          });
+        } catch {
+          // skip unparseable items
+        }
+      }
+      return results.length > 0 ? results : null;
     } catch {
       return null;
     }
@@ -306,21 +336,23 @@ export class PersonaLlmAgentBase extends BaseAgent {
     }
   }
 
-  private worldFingerprint(world: Record<string, unknown>): string {
-    return safeJson(world).slice(0, 512);
-  }
-
   private worldDeltaSummary(world: Record<string, unknown>): string {
-    const previous = this.recall<string>('last_world_fingerprint');
-    const next = this.worldFingerprint(world);
-    this.remember('last_world_fingerprint', next);
-    if (!previous) {
+    const previousWorld = this.recall<Record<string, unknown>>('last_world_snapshot');
+    this.remember('last_world_snapshot', world);
+    if (!previousWorld) {
       return 'initial_world';
     }
-    if (previous === next) {
+    const changedKeys: string[] = [];
+    const allKeys = new Set([...Object.keys(previousWorld), ...Object.keys(world)]);
+    for (const key of allKeys) {
+      const prev = safeJson(previousWorld[key]);
+      const curr = safeJson(world[key]);
+      if (prev !== curr) changedKeys.push(key);
+    }
+    if (changedKeys.length === 0) {
       return 'no_material_change';
     }
-    return `changed:${Math.abs(previous.length - next.length)}bytes`;
+    return `changed_keys:[${changedKeys.join(',')}]`;
   }
 
   private rollWindow(values: string[], max: number): string[] {

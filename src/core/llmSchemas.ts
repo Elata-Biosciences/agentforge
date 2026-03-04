@@ -7,22 +7,6 @@ export const LlmActionIntentSchema = z.object({
   metadata: z
     .object({
       personaId: z.string().optional(),
-      intentTag: z
-        .enum([
-          'creator',
-          'economic',
-          'bad_actor',
-          'saboteur',
-          'hacker',
-          'observer',
-          'inform',
-          'persuade',
-          'coordinate',
-          'deceive',
-          'probe',
-          'other',
-        ])
-        .optional(),
       confidence: z.number().min(0).max(1).optional(),
     })
     .optional(),

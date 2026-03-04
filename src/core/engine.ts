@@ -26,7 +26,6 @@ import type {
   FailedAssertion,
   GossipConfig,
   QueryConfig,
-  RecordedAction,
   RunMode,
   RunOptions,
   RunResult,
@@ -480,7 +479,6 @@ export class SimulationEngine {
               authorAgentId: 'system',
               channelId: 'delivery',
               audience: { type: 'agents', agentIds: [event.recipientAgentId] },
-              intentTag: 'inform',
               costPaid: 0,
               credibilityPrior: 1,
               payloadHash: event.messageId,
@@ -582,18 +580,26 @@ export class SimulationEngine {
     );
     const stepStart = Date.now();
 
-    let action: Action | null = null;
-    let result: ActionResult | null = null;
-
     try {
-      // Get agent action from replay or live policy
+      // Get agent action(s) from replay or live policy
+      let rawActions: Action | Action[] | null = null;
       if (resolvedOptions.mode === 'replay' && replayBundle) {
-        action = selectReplayAction(replayBundle, tick, agent.id)?.action ?? null;
+        rawActions = selectReplayAction(replayBundle, tick, agent.id)?.action ?? null;
       } else {
-        action = await agent.step(ctx);
+        rawActions = await agent.step(ctx);
       }
 
-      if (action) {
+      const actions: Action[] =
+        rawActions === null ? [] : Array.isArray(rawActions) ? rawActions : [rawActions];
+
+      if (actions.length === 0) {
+        agent.recordSkip();
+        return;
+      }
+
+      for (const action of actions) {
+        let result: ActionResult | null = null;
+
         const validation = actionRegistry.validate(action, {
           mode: resolvedOptions.mode,
           world: ctx.world,
@@ -601,10 +607,20 @@ export class SimulationEngine {
         if (!validation.ok) {
           result = { ok: false, error: validation.error ?? 'action_validation_failed' };
           agent.recordFailure();
+          artifactsWriter.recordAction({
+            tick,
+            timestamp,
+            agentId: agent.id,
+            agentType: agent.type,
+            action,
+            result,
+            durationMs: Date.now() - stepStart,
+          });
           if (resolvedOptions.mode === 'exploration') {
             replayRecorder.recordAction({ tick, agentId: agent.id, action: null });
           }
-          return;
+          lastResults.set(agent.id, result);
+          continue;
         }
 
         // Execute action through engine/pack (tool-like actions are engine-handled)
@@ -669,36 +685,12 @@ export class SimulationEngine {
             if (!channelId || !text) {
               result = { ok: false, error: 'post_message_requires_channel_and_text' };
             } else {
-              const rawIntentTag = String(action.params.intentTag ?? '')
-                .trim()
-                .toLowerCase();
-              const normalizedIntentTag = rawIntentTag
-                ? this.coerceIntentTag(rawIntentTag)
-                : undefined;
               const postOptions = {
-                ...(normalizedIntentTag
-                  ? {
-                      intentTag: normalizedIntentTag as
-                        | 'inform'
-                        | 'persuade'
-                        | 'coordinate'
-                        | 'deceive'
-                        | 'probe'
-                        | 'other',
-                    }
-                  : {}),
                 ...(typeof action.params.credibilityPrior === 'number'
                   ? { credibilityPrior: action.params.credibilityPrior }
                   : {}),
               };
-              const posted = ctx.gossip.postMessage(
-                agent.id,
-                channelId,
-                { text },
-                {
-                  ...postOptions,
-                }
-              );
+              const posted = ctx.gossip.postMessage(agent.id, channelId, { text }, postOptions);
               result = posted.ok
                 ? {
                     ok: true,
@@ -729,7 +721,7 @@ export class SimulationEngine {
           result = await scenario.pack.executeAction(action, agent.id);
         }
 
-        if (result.ok) {
+        if (result!.ok) {
           agent.recordSuccess();
           this.logger.trace(
             {
@@ -748,13 +740,31 @@ export class SimulationEngine {
               agentId: agent.id,
               action: action.name,
               success: false,
-              error: result.error,
+              error: result!.error,
             },
-            `${agent.id} failed ${action.name}: ${result.error}`
+            `${agent.id} failed ${action.name}: ${result!.error}`
           );
         }
-      } else {
-        agent.recordSkip();
+
+        artifactsWriter.recordAction({
+          tick,
+          timestamp,
+          agentId: agent.id,
+          agentType: agent.type,
+          action,
+          result,
+          durationMs: Date.now() - stepStart,
+        });
+
+        if (resolvedOptions.mode === 'exploration') {
+          replayRecorder.recordAction({
+            tick,
+            agentId: agent.id,
+            action,
+          });
+        }
+
+        lastResults.set(agent.id, result);
       }
     } catch (error) {
       agent.recordFailure();
@@ -767,29 +777,7 @@ export class SimulationEngine {
         },
         `Agent ${agent.id} error: ${errorMessage}`
       );
-      result = { ok: false, error: errorMessage };
-    }
-
-    lastResults.set(agent.id, result);
-
-    // Record action
-    const recorded: RecordedAction = {
-      tick,
-      timestamp,
-      agentId: agent.id,
-      agentType: agent.type,
-      action,
-      result,
-      durationMs: Date.now() - stepStart,
-    };
-    artifactsWriter.recordAction(recorded);
-
-    if (resolvedOptions.mode === 'exploration') {
-      replayRecorder.recordAction({
-        tick,
-        agentId: agent.id,
-        action,
-      });
+      lastResults.set(agent.id, { ok: false, error: errorMessage });
     }
   }
 
@@ -1060,7 +1048,7 @@ export class SimulationEngine {
         {
           name: 'PostMessage',
           description: 'Publish a gossip message to channel',
-          exampleParams: { channelId: 'global', text: 'state update', intentTag: 'inform' },
+          exampleParams: { channelId: 'global', text: 'state update' },
         },
       ],
     };
@@ -1141,7 +1129,6 @@ export class SimulationEngine {
         const channelId = String(event.payload.channelId ?? 'global');
         const text = String(event.payload.text ?? '');
         const posted = gossipBus.postSystemMessage(channelId, { text }, rng, {
-          intentTag: 'inform',
           credibilityPrior: 1,
         });
         if (posted.ok && posted.message) {
@@ -1159,10 +1146,8 @@ export class SimulationEngine {
       if (event.type === 'gossip_inject') {
         const channelId = String(event.payload.channelId ?? 'global');
         const text = String(event.payload.text ?? '');
-        const intentTag = this.coerceIntentTag(String(event.payload.intentTag ?? 'inform'));
         const credibilityPrior = Number(event.payload.credibilityPrior ?? 1);
         const posted = gossipBus.postSystemMessage(channelId, { text }, rng, {
-          intentTag,
           credibilityPrior,
         });
         if (posted.ok && posted.message) {
@@ -1196,31 +1181,6 @@ export class SimulationEngine {
         }
       }
     }
-  }
-
-  private coerceIntentTag(
-    input: string
-  ): 'inform' | 'persuade' | 'coordinate' | 'deceive' | 'probe' | 'other' {
-    if (input === 'creator' || input === 'economic' || input === 'observer') {
-      return 'inform';
-    }
-    if (input === 'bad_actor' || input === 'saboteur') {
-      return 'deceive';
-    }
-    if (input === 'hacker') {
-      return 'probe';
-    }
-    if (
-      input === 'inform' ||
-      input === 'persuade' ||
-      input === 'coordinate' ||
-      input === 'deceive' ||
-      input === 'probe' ||
-      input === 'other'
-    ) {
-      return input;
-    }
-    return 'other';
   }
 
   private runSmokeHooks(

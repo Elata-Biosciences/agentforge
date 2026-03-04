@@ -63,7 +63,7 @@ export abstract class BaseAgent {
    * @param ctx - The tick context with world state, RNG, and logger
    * @returns The action to take, or null to skip this tick
    */
-  abstract step(ctx: TickContext): Promise<Action | null>;
+  abstract step(ctx: TickContext): Promise<Action | Action[] | null>;
 
   /**
    * Called when the agent is initialized at the start of a simulation

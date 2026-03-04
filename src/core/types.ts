@@ -578,7 +578,6 @@ export interface MessageEnvelope {
   authorAgentId: string;
   channelId: string;
   audience: AudienceSpec;
-  intentTag: 'inform' | 'persuade' | 'coordinate' | 'deceive' | 'probe' | 'other';
   costPaid: number;
   credibilityPrior: number;
   payloadHash: string;

@@ -69,11 +69,9 @@ An **Agent** is an autonomous actor that participates in the simulation. Agents:
 import { BaseAgent, type Action, type TickContext } from '@elata-biosciences/agentforge';
 
 export class MyAgent extends BaseAgent {
-  async step(ctx: TickContext): Promise<Action | null> {
-    // Access world state
+  async step(ctx: TickContext): Promise<Action | Action[] | null> {
     const price = ctx.world.price as number;
-    
-    // Use deterministic randomness
+
     if (ctx.rng.chance(0.3)) {
       return {
         id: this.generateActionId('buy', ctx.tick),
@@ -81,11 +79,25 @@ export class MyAgent extends BaseAgent {
         params: { amount: ctx.rng.nextInt(1, 100) },
       };
     }
-    
+
     return null; // Skip this tick
   }
 }
 ```
+
+### Multi-Action Support
+
+Agents can return a single action, an array of actions, or `null`:
+
+```typescript
+async step(ctx: TickContext): Promise<Action | Action[] | null> {
+  const trade = { id: this.generateActionId('swap', ctx.tick), name: 'u4_swap', params: { ... } };
+  const message = { id: this.generateActionId('post', ctx.tick), name: 'PostMessage', params: { channelId: 'strategy', text: '...' } };
+  return [trade, message]; // Both executed sequentially within this tick
+}
+```
+
+The engine executes each action in array order. Each is validated and recorded independently.
 
 ### Agent Features
 

@@ -36,7 +36,7 @@ describe('llm policy agent', () => {
       {},
       {
         complete: async () =>
-          '{"name":"DoNothing","params":{},"rationale":"safe","metadata":{"personaId":"tester","intentTag":"observer","confidence":0.9}}',
+          '{"name":"DoNothing","params":{},"rationale":"safe","metadata":{"personaId":"tester","confidence":0.9}}',
       }
     );
 
@@ -52,16 +52,16 @@ describe('llm policy agent', () => {
     };
     const action = await agent.step(ctx);
     expect(action?.metadata?.personaId).toBe('tester');
-    expect(action?.metadata?.intentTag).toBe('observer');
+    expect(action?.metadata?.confidence).toBe(0.9);
   });
 
-  it('accepts gossip semantic intent tags in parsed action intent', async () => {
+  it('parses PostMessage action with persona metadata', async () => {
     const agent = new LlmPolicyAgent(
       'llm-1c',
       {},
       {
         complete: async () =>
-          '{"name":"PostMessage","params":{"channelId":"global","text":"signal","intentTag":"coordinate"},"rationale":"sync peers","metadata":{"personaId":"tester","intentTag":"inform","confidence":0.76}}',
+          '{"name":"PostMessage","params":{"channelId":"global","text":"signal"},"rationale":"sync peers","metadata":{"personaId":"tester","confidence":0.76}}',
       }
     );
 
@@ -77,7 +77,8 @@ describe('llm policy agent', () => {
     };
     const action = await agent.step(ctx);
     expect(action?.name).toBe('PostMessage');
-    expect(action?.metadata?.intentTag).toBe('inform');
+    expect(action?.metadata?.personaId).toBe('tester');
+    expect(action?.metadata?.confidence).toBe(0.76);
   });
 
   it('returns null when decision is not parseable', async () => {
@@ -154,7 +155,7 @@ describe('llm policy agent', () => {
           if (calls === 1) {
             return '{"hypothesis":"Probe governance drift","expectedEffect":"select high-signal action","preferredActionFamily":"QueryWorld","confidence":0.7}';
           }
-          return '{"name":"QueryWorld","params":{"endpoint":"get_world"},"rationale":"need fresh state","metadata":{"personaId":"adversarial-policy","intentTag":"observer","confidence":0.8}}';
+          return '{"name":"QueryWorld","params":{"endpoint":"get_world"},"rationale":"need fresh state","metadata":{"personaId":"adversarial-policy","confidence":0.8}}';
         },
       }
     );

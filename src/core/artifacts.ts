@@ -66,6 +66,12 @@ export class ArtifactsWriter {
     null;
   private gossipBuffer: string[] = [];
   private gossipWriteChain: Promise<void> = Promise.resolve();
+  private gossipStats = {
+    posts: 0,
+    deliveries: 0,
+    byChannel: {} as Record<string, number>,
+    byAgent: {} as Record<string, number>,
+  };
 
   constructor(options: ArtifactsWriterOptions) {
     this.outDir = options.outDir;
@@ -106,6 +112,16 @@ export class ArtifactsWriter {
   }
 
   recordGossipEvent(event: GossipArtifactRow): void {
+    if (event.kind === 'gossip_post') {
+      this.gossipStats.posts++;
+      const channel = event.message?.envelope?.channelId;
+      if (channel)
+        this.gossipStats.byChannel[channel] = (this.gossipStats.byChannel[channel] ?? 0) + 1;
+      const author = event.message?.envelope?.authorAgentId;
+      if (author) this.gossipStats.byAgent[author] = (this.gossipStats.byAgent[author] ?? 0) + 1;
+    } else if (event.kind === 'gossip_deliver') {
+      this.gossipStats.deliveries++;
+    }
     try {
       this.onGossipRecorded?.(event);
     } catch (err) {
@@ -253,6 +269,7 @@ export class ArtifactsWriter {
       failedAssertions: result.failedAssertions,
       finalMetrics: serializeMetrics(result.finalMetrics),
       agentStats: result.agentStats,
+      gossipStats: this.gossipStats,
       timestamp: new Date().toISOString(),
     };
 
