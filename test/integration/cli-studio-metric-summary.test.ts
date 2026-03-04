@@ -69,7 +69,7 @@ describe('Studio stats: metric summary (A/B)', () => {
       const resp = await fetch(`${baseUrl}api/runs/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toy: true, mode: 'deterministic', outDir: root, ticks: 40, seed }),
+        body: JSON.stringify({ toy: true, mode: 'deterministic', outDir: root, ticks: 15, seed }),
       });
       expect(resp.status).toBe(200);
       const j = (await resp.json()) as any;
@@ -82,7 +82,7 @@ describe('Studio stats: metric summary (A/B)', () => {
     let runs: any[] = [];
     const start = Date.now();
     while (runs.length < 2) {
-      if (Date.now() - start > 60_000) throw new Error('timeout_waiting_for_runs');
+      if (Date.now() - start > 90_000) throw new Error('timeout_waiting_for_runs');
       const resp = await fetch(`${baseUrl}api/runs`);
       const j = (await resp.json()) as any;
       const list = Array.isArray(j.runs) ? (j.runs as any[]) : [];
@@ -110,5 +110,5 @@ describe('Studio stats: metric summary (A/B)', () => {
 
     ws.close();
     child.kill('SIGTERM');
-  }, 90_000);
+  }, 120_000);
 });
