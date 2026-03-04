@@ -1,0 +1,17 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts", "src/toy/index.ts", "src/adapters/index.ts"],
+  "out": "docs-site/api",
+  "name": "AgentForge API",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "treatWarningsAsErrors": false,
+  "plugin": ["typedoc-plugin-markdown"],
+  "sort": ["source-order"],
+  "visibilityFilters": {
+    "protected": false,
+    "private": false,
+    "inherited": true,
+    "external": false
+  }
+}

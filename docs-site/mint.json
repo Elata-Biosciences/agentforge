@@ -1,0 +1,45 @@
+{
+  "name": "AgentForge",
+  "logo": {
+    "dark": "/logo-dark.svg",
+    "light": "/logo-light.svg"
+  },
+  "favicon": "/favicon.ico",
+  "colors": {
+    "primary": "#38bdf8",
+    "background": "#0f172a"
+  },
+  "topbarLinks": [],
+  "topbarCtaButton": {
+    "name": "GitHub",
+    "url": "https://github.com/Elata-Biosciences/agentforge"
+  },
+  "anchors": [
+    {
+      "name": "GitHub",
+      "url": "https://github.com/Elata-Biosciences/agentforge"
+    },
+    {
+      "name": "npm",
+      "url": "https://www.npmjs.com/package/@elata-biosciences/agentforge"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": ["introduction", "guides/concepts", "guides/cli"]
+    },
+    {
+      "group": "Guides",
+      "pages": ["guides/reporting", "guides/llm-gossip-replay", "guides/ci", "guides/portability"]
+    },
+    {
+      "group": "Examples",
+      "pages": ["examples/uniswap-demo"]
+    },
+    {
+      "group": "API Reference",
+      "pages": ["api/index"]
+    }
+  ]
+}

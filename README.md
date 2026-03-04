@@ -29,7 +29,7 @@ AgentForge simulates how your protocol behaves when many autonomous agents — t
 
 ## See It In Action
 
-The [Uniswap v4 AgentForge Demo](https://github.com/wkyleg/v4-core/tree/main/sim/agentforge-demo) is a full integration of AgentForge into a real protocol repo. It includes:
+The [Uniswap v4 AgentForge Demo](https://github.com/wkyleg/v4-core/tree/main/sim/agentforge-demo) demonstrates AgentForge integrated into a fork of the Uniswap v4 protocol. It includes:
 
 - Deterministic and LLM-driven agent strategies for Uniswap v4 pools
 - Multi-action agents that trade and communicate within the same tick
@@ -353,11 +353,11 @@ import { ToyPack, RandomTraderAgent, MomentumAgent } from '@elata-biosciences/ag
 - `examples/assertions/` — Assertion validation patterns
 - `examples/metrics-tracking/` — CSV analysis and statistics
 - `examples/mechanism-experiments/` — Ordering and timing experiments
-- [Uniswap v4 Demo](https://github.com/wkyleg/v4-core/tree/main/sim/agentforge-demo) — Real-world integration with deterministic + LLM agents
+- [Uniswap v4 Fork Demo](https://github.com/wkyleg/v4-core/tree/main/sim/agentforge-demo) — Integration demo with deterministic + LLM agents
 
-## Used By
+## Demo Integrations
 
-- [Uniswap v4](https://github.com/wkyleg/v4-core/tree/main/sim/agentforge-demo) — Agent-based simulation of v4 pool mechanisms
+- [Uniswap v4 Fork](https://github.com/wkyleg/v4-core/tree/main/sim/agentforge-demo) — Agent-based simulation of v4 pool mechanisms (community demo)
 - [Elata Protocol](https://github.com/Elata-Biosciences/elata-protocol) — App launchpad with bonding curves
 
 ## Roadmap

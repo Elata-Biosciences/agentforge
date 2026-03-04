@@ -3,6 +3,7 @@ import { EChartsDonut } from '@/components/charts/EChartsDonut.tsx';
 import { EChartsXY } from '@/components/charts/EChartsXY.tsx';
 import { EChartsBar } from '@/components/charts/EChartsBar.tsx';
 import { EChartsHistogram } from '@/components/charts/EChartsHistogram.tsx';
+import { MarkdownRenderer } from '@/components/MarkdownRenderer.tsx';
 import { TerminalPanel } from '@/components/terminal/index.ts';
 import { safeStringify, prettyJson } from '@/lib/helpers.ts';
 import type { RunData } from '@/types/index.ts';
@@ -12,34 +13,6 @@ function toCsvValue(v: unknown): string {
   const s = typeof v === 'string' ? v : safeStringify(v);
   if (/[,"\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
   return s;
-}
-
-function RenderMarkdown({ md }: { md: string }) {
-  const lines = String(md ?? '').replaceAll('\r\n', '\n').split('\n');
-  const out: React.ReactElement[] = [];
-  let inCode = false;
-  let codeBuf: string[] = [];
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i] ?? '';
-    if (line.trim().startsWith('```')) {
-      if (!inCode) { inCode = true; codeBuf = []; } else {
-        inCode = false;
-        const code = codeBuf.join('\n');
-        out.push(<pre key={`code-${i}`} className="font-mono text-xs whitespace-pre-wrap break-words border border-border/60 rounded-sm p-2.5 bg-card/80">{code}</pre>);
-        codeBuf = [];
-      }
-      continue;
-    }
-    if (inCode) { codeBuf.push(line); continue; }
-    const trimmed = line.trim();
-    if (!trimmed) { out.push(<div key={`sp-${i}`} className="h-2" />); continue; }
-    if (trimmed.startsWith('### ')) { out.push(<h3 key={`h3-${i}`} className="text-sm font-semibold mt-2 mb-1">{trimmed.slice(4)}</h3>); continue; }
-    if (trimmed.startsWith('## ')) { out.push(<h2 key={`h2-${i}`} className="text-sm font-semibold mt-2 mb-1">{trimmed.slice(3)}</h2>); continue; }
-    if (trimmed.startsWith('# ')) { out.push(<div key={`h1-${i}`} className="text-base font-bold mt-2 mb-1">{trimmed.slice(2)}</div>); continue; }
-    if (trimmed.startsWith('- ')) { out.push(<div key={`li-${i}`} className="flex gap-2 text-xs"><span className="text-muted-foreground">-</span><span>{trimmed.slice(2)}</span></div>); continue; }
-    out.push(<div key={`p-${i}`} className="text-xs text-foreground">{trimmed}</div>);
-  }
-  return <div>{out}</div>;
 }
 
 export function ReportTab({ data }: { data: RunData }) {
@@ -57,7 +30,7 @@ export function ReportTab({ data }: { data: RunData }) {
         const title = String(b?.title ?? b?.id ?? b?.as ?? kind);
 
         if (kind === 'markdown') {
-          return <TerminalPanel key={idx}><RenderMarkdown md={String(b?.markdown ?? '')} /></TerminalPanel>;
+          return <TerminalPanel key={idx}><MarkdownRenderer content={String(b?.markdown ?? '')} /></TerminalPanel>;
         }
 
         if (kind === 'dataset' || kind === 'transform') {

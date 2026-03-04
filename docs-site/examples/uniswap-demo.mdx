@@ -1,0 +1,198 @@
+---
+title: Uniswap v4 AgentForge Demo
+description: Agent-based simulation of Uniswap v4 pool mechanisms with deterministic and LLM-driven agent strategies.
+---
+
+Agent-based simulation of Uniswap v4 pool mechanisms using AgentForge. This demo demonstrates how to integrate AgentForge into an existing protocol repository with both deterministic and LLM-driven agent strategies.
+
+## Overview
+
+This demo simulates a Uniswap v4 environment with multiple pool types, flow traders, liquidity stewards, hook policy agents, and LLM-powered strategists. It serves as a reference implementation for:
+
+- Writing custom agents (deterministic and LLM-driven)
+- Defining scenario configurations with assertions
+- Using gossip channels for inter-agent coordination
+- Multi-action support (agents can trade and communicate in the same tick)
+- Launching Studio dashboards for analysis
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js >= 20
+- pnpm
+- (Optional) `OPENAI_API_KEY` or `OPENROUTER_API_KEY` for LLM exploration mode
+
+### Install
+
+```bash
+cd sim/agentforge-demo
+pnpm install
+```
+
+### Run a Simulation
+
+```bash
+# Deterministic baseline (no LLM, fully reproducible)
+pnpm run uniswap:v4:deterministic
+
+# LLM exploration (requires API key)
+pnpm run uniswap:v4:llm:short
+
+# Smoke test (deterministic + LLM-deterministic)
+pnpm run uniswap:v4:smoke
+```
+
+### Launch Studio
+
+```bash
+pnpm run studio:8791
+# Open http://127.0.0.1:8791/
+```
+
+Studio provides an interactive dashboard with financial charts, action timelines, gossip inspection, agent stats, and ML tooling.
+
+## Project Structure
+
+```
+agentforge-demo/
+├── agents/
+│   └── uniswap/
+│       └── UniswapModelAgents.ts    # All agent implementations
+├── packs/
+│   └── UniswapV4ModelPack.ts        # World state, action execution, metrics
+├── scenarios/
+│   └── uniswap/
+│       ├── v4-flagship-deterministic.ts    # Deterministic baseline scenario
+│       └── v4-flagship-llm-exploration.ts  # LLM exploration scenario
+├── lib/
+│   ├── runtime-config.ts            # Env-based config (seed, mode, tags)
+│   └── studio-report.ts             # Dashboard report block definitions
+├── scripts/
+│   ├── require-live-llm-env.ts      # Pre-flight check for LLM API keys
+│   └── validate-uniswap-consistency.ts  # Determinism validation
+├── tests/
+│   └── uniswap-model-pack.test.ts   # Pack unit tests
+├── results/                          # Simulation output (gitignored)
+└── package.json
+```
+
+## Agent Types
+
+### Deterministic Agents
+
+| Agent | Role |
+|-------|------|
+| `DeterministicFlowTraderAgent` | Simulates organic trade flow — buys/sells based on seeded RNG with configurable volume ranges |
+| `DeterministicLiquidityStewardAgent` | Adds/removes liquidity at configured intervals to model LP behavior |
+| `DeterministicHookPolicyAgent` | Switches hook modes (passive, volatility-reactive, anti-MEV) based on volatility thresholds |
+
+### LLM Agent
+
+`UniswapLlmStrategistAgent` uses `PersonaLlmAgentBase` with a persona-driven OODA loop:
+
+1. **Observe** — receives world state, pool metrics, capability manifest, gossip inbox, and last action results
+2. **Orient** — plans strategy via LLM with full context
+3. **Decide** — selects one or more actions (swaps, liquidity changes, gossip posts)
+4. **Act** — engine executes each action sequentially
+
+The agent supports **multi-action** — it can submit a trade and post a strategy message in the same tick:
+
+```typescript
+return [
+  { name: 'u4_swap', params: { poolId: 'eth_usdc_5bps', side: 'buy_token0', amountIn: 5000 } },
+  { name: 'PostMessage', params: { channelId: 'strategy', text: 'Buying ETH — low volatility entry' } },
+];
+```
+
+### Strategy Channels
+
+The LLM scenario defines a `strategy` channel with only LLM agents as members. This prevents gossip from flooding deterministic agents that don't process it, while enabling LLM agents to coordinate and share market views.
+
+## Scenarios
+
+### Deterministic (`v4-flagship-deterministic.ts`)
+
+- 60 ticks, seed 9404
+- 10 flow traders, 4 liquidity stewards, 3 hook policy agents
+- Two pools: `eth_usdc_5bps` and `wbtc_usdc_30bps`
+- Assertions: TVL > 0, volume > 0, fees > 0
+
+### LLM Exploration (`v4-flagship-llm-exploration.ts`)
+
+- 70 ticks (or 18 in short mode), seed 9402
+- Same deterministic agents plus 3 `UniswapLlmStrategistAgent` instances
+- Strategy gossip channel for LLM coordination
+- Exploration mode produces `replay_bundle.json` for future regression
+
+## Available Scripts
+
+| Script | Description |
+|--------|-------------|
+| `uniswap:v4:deterministic` | Run deterministic baseline scenario |
+| `uniswap:v4:llm` | Run LLM exploration (requires API key) |
+| `uniswap:v4:llm:deterministic` | Run LLM scenario in deterministic fallback mode |
+| `uniswap:v4:llm:short` | Short LLM run (18 ticks, 120s tick interval) |
+| `uniswap:v4:smoke` | Run both deterministic + LLM-deterministic |
+| `uniswap:v4:stability` | Two deterministic runs + consistency validation |
+| `stress:uniswap:v4` | Stress test with multiple seeds |
+| `studio` | Launch Studio on a random port |
+| `studio:8791` | Launch Studio on port 8791 |
+| `studio:open` | Launch Studio and open in browser |
+| `typecheck` | TypeScript type checking |
+| `test` | Run unit tests |
+| `lint` | Lint with Biome |
+
+## Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `OPENAI_API_KEY` | OpenAI API key for LLM exploration |
+| `OPENROUTER_API_KEY` | OpenRouter API key (alternative provider) |
+| `SIMULATION_MODE` | Force `deterministic` mode for LLM scenarios |
+| `SIMULATION_SEED` | Override the scenario seed |
+| `SIM_RUN_TAG` | Tag for isolating output directories |
+| `SIM_SHORT_RUN` / `SIM_SHORT_TICKS` | Enable short run with custom tick count |
+
+## Creating a New Scenario
+
+1. Add a scenario file under `scenarios/`:
+
+```typescript
+import { defineScenario } from '@elata-biosciences/agentforge';
+import { UniswapV4ModelPack } from '../packs/UniswapV4ModelPack.js';
+import { DeterministicFlowTraderAgent } from '../agents/index.js';
+
+export default defineScenario({
+  name: 'my-experiment',
+  seed: 42,
+  ticks: 50,
+  tickSeconds: 3600,
+  pack: new UniswapV4ModelPack({ /* pool config */ }),
+  agents: [
+    { type: DeterministicFlowTraderAgent, count: 5, params: { minAmount: 100, maxAmount: 50000 } },
+  ],
+  assertions: [
+    { type: 'gt', metric: 'uniswap_tvl_usd', value: 0 },
+  ],
+});
+```
+
+2. Add a script to `package.json`:
+
+```json
+"my-experiment": "tsx scenarios/my-experiment.ts"
+```
+
+3. Run it:
+
+```bash
+pnpm run my-experiment
+pnpm run studio:8791   # Inspect results
+```
+
+## Further Reading
+
+- [Core Concepts](/guides/concepts) — Scenarios, agents, ticks, packs
+- [LLM/Gossip Workflow](/guides/llm-gossip-replay) — Exploration, replay, and gossip channels
+- [AgentForge GitHub](https://github.com/Elata-Biosciences/agentforge) — Framework docs and API reference

@@ -5,7 +5,8 @@ import {
 import { BaseAgent } from '../../core/agent.js';
 import { LlmActionIntentSchema, LlmPlanIntentSchema } from '../../core/llmSchemas.js';
 import type { Action, GossipMessage, TickContext } from '../../core/types.js';
-import type { LlmClient } from './types.js';
+import { createLlmProviderClient } from './providers/factory.js';
+import type { LlmClient, LlmProviderConfig } from './types.js';
 
 export interface PersonaProfile {
   id: string;
@@ -55,15 +56,32 @@ export class PersonaLlmAgentBase extends BaseAgent {
     registry?: InMemoryActionValidatorRegistry
   ) {
     super(id, params);
-    this.llm = llmClient ?? {
-      complete: async () => '{"name":"DoNothing","params":{},"rationale":"fallback"}',
-    };
+    this.llm = llmClient ??
+      this.tryCreateProviderClient(params) ?? {
+        complete: async () => '{"name":"DoNothing","params":{},"rationale":"fallback"}',
+      };
     this.registry = registry ?? createDefaultActionRegistry();
     this.maxContextChars = this.getParam('maxContextChars', 16_000);
     this.model = this.getParam('model', 'gpt-4o-mini');
     this.toolHints = this.getParam('toolHints', '');
     this.persona = this.resolvePersona(this.getParam('persona', {}));
     this.remember('persona_profile', this.persona);
+  }
+
+  private tryCreateProviderClient(params: Record<string, unknown>): LlmClient | null {
+    const provider = params.provider as string | undefined;
+    if (!provider) return null;
+    try {
+      const config: LlmProviderConfig = {
+        provider: provider as LlmProviderConfig['provider'],
+        ...(typeof params.model === 'string' ? { model: params.model } : {}),
+        ...(typeof params.apiKey === 'string' ? { apiKey: params.apiKey } : {}),
+        ...(typeof params.baseUrl === 'string' ? { baseUrl: params.baseUrl } : {}),
+      };
+      return createLlmProviderClient(config);
+    } catch {
+      return null;
+    }
   }
 
   async step(ctx: TickContext): Promise<Action | Action[] | null> {
