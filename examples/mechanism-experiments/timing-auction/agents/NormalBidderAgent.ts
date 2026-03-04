@@ -1,4 +1,5 @@
-import { type Action, BaseAgent, type TickContext } from '@elata-biosciences/agentforge';
+import { BaseAgent } from '../../../../src/core/agent.js';
+import type { Action, TickContext } from '../../../../src/core/types.js';
 
 /**
  * NormalBidderAgent - A standard auction bidder

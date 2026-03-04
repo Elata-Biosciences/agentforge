@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { InfoTip } from './components/InfoTip.tsx';
+import { JsonPopover } from './components/JsonPopover.tsx';
+import { TerminalPanel } from '@/components/terminal/index.ts';
 
 type Row = Record<string, unknown>;
 
@@ -28,7 +30,6 @@ function asSortableNumber(v: unknown): number | null {
 function inferColumns(rows: Row[], sampleN = 200): string[] {
   const names = new Set<string>();
   for (const r of rows.slice(0, sampleN)) for (const k of Object.keys(r)) names.add(k);
-  // Put common fields first.
   const preferred = ['tick', 'timestamp', 'agentId', 'agentType', 'ok', 'action', 'result'];
   const rest = [...names].filter((k) => !preferred.includes(k)).sort((a, b) => a.localeCompare(b));
   return [...preferred.filter((k) => names.has(k)), ...rest];
@@ -37,10 +38,12 @@ function inferColumns(rows: Row[], sampleN = 200): string[] {
 function toCsvValue(v: unknown): string {
   if (v === null || v === undefined) return '';
   const s = typeof v === 'string' ? v : asSortableString(v);
-  // Basic CSV escaping.
   if (/[,"\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
   return s;
 }
+
+const btn = 'bg-muted/50 border border-border/60 rounded-sm px-2 py-1 text-[11px] text-foreground hover:bg-muted/80 cursor-pointer';
+const inp = 'bg-muted/50 border border-border/60 rounded-sm px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground/50';
 
 export function DataGrid({
   title,
@@ -59,7 +62,6 @@ export function DataGrid({
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() => allColumns.slice(0, 6));
 
   useEffect(() => {
-    // When dataset changes, reset columns to a sane default.
     setVisibleColumns((prev) => (prev.length > 0 ? prev : allColumns.slice(0, 6)));
     if (!allColumns.includes(sortField)) {
       setSortField(allColumns.includes('tick') ? 'tick' : allColumns[0] ?? 'tick');
@@ -113,7 +115,6 @@ export function DataGrid({
     try {
       await navigator.clipboard.writeText(text);
     } catch {
-      // best-effort fallback
       const ta = document.createElement('textarea');
       ta.value = text;
       document.body.appendChild(ta);
@@ -141,49 +142,44 @@ export function DataGrid({
   const cols = visibleColumns.length > 0 ? visibleColumns : allColumns;
 
   return (
-    <div className="card">
-      <h2>{title}</h2>
-      <div className="filters">
+    <TerminalPanel title={title}>
+      <div className="flex items-center gap-2 flex-wrap mb-1">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search (case-insensitive)"
-          style={{ minWidth: 260 }}
+          className={`${inp} min-w-[260px]`}
         />
-        <label className="muted">Limit</label>
+        <label className="text-[11px] text-muted-foreground">Limit</label>
         <input
           value={String(limit)}
           onChange={(e) => setLimit(Number(e.target.value) || defaultLimit)}
-          style={{ width: 110 }}
+          className={`${inp} w-[110px]`}
         />
-        <label className="muted">Sort</label>
+        <label className="text-[11px] text-muted-foreground">Sort</label>
         <InfoTip text="Pick a column and direction. Numeric values sort numerically; others sort lexicographically." />
-        <select value={sortField} onChange={(e) => setSortField(e.target.value)}>
+        <select value={sortField} onChange={(e) => setSortField(e.target.value)} className={inp}>
           {allColumns.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
+            <option key={c} value={c}>{c}</option>
           ))}
         </select>
-        <select
-          value={sortDir}
-          onChange={(e) => setSortDir(e.target.value === 'asc' ? 'asc' : 'desc')}
-        >
+        <select value={sortDir} onChange={(e) => setSortDir(e.target.value === 'asc' ? 'asc' : 'desc')} className={inp}>
           <option value="desc">desc</option>
           <option value="asc">asc</option>
         </select>
-        <button onClick={() => void copyCsv()}>Copy CSV</button>
-        <button onClick={() => downloadCsv()}>Download CSV</button>
+        <button onClick={() => void copyCsv()} className={btn}>Copy CSV</button>
+        <button onClick={() => downloadCsv()} className={btn}>Download CSV</button>
         <InfoTip text="CSV export includes visible columns and currently filtered/sorted rows." />
       </div>
-      <div className="muted" style={{ marginTop: 8 }}>
+
+      <div className="text-[11px] text-muted-foreground font-mono mt-1 mb-2">
         rows:{filteredSorted.length.toLocaleString()} cols:{cols.length.toLocaleString()}
       </div>
-      <div className="dgLayout">
-        <div className="dgControls">
-          <div className="muted">
-            Visible columns{' '}
-            <InfoTip text="Choose which columns are shown in the table and included in CSV copy/download." />
+
+      <div className="flex gap-2 mt-1">
+        <div className="min-w-[180px] shrink-0">
+          <div className="text-[11px] text-muted-foreground mb-1">
+            Visible columns <InfoTip text="Choose which columns are shown in the table and included in CSV copy/download." />
           </div>
           <select
             multiple
@@ -192,57 +188,45 @@ export function DataGrid({
               const next = [...e.target.selectedOptions].map((o) => o.value);
               setVisibleColumns(next);
             }}
-            className="dgColumnsSelect"
+            className={`${inp} w-full h-[160px]`}
           >
             {allColumns.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
+              <option key={c} value={c}>{c}</option>
             ))}
           </select>
-          <div className="muted" style={{ marginTop: 6 }}>
+          <div className="text-[10px] text-muted-foreground/70 mt-1">
             Tip: cmd/ctrl-click to multi-select.
           </div>
         </div>
 
-        <div className="dgTablePanel">
+        <div className="flex-1 overflow-hidden">
           <div
             ref={parentRef}
-            className="virtualList"
-            style={{ height: 520, overflow: 'auto', whiteSpace: 'nowrap' }}
+            className="h-[520px] overflow-auto border border-border/40 rounded-sm bg-background"
+            style={{ whiteSpace: 'nowrap' }}
           >
             <div style={{ width: 'max-content', minWidth: '100%' }}>
-              <div
-                className="row dgStickyHeader"
-              >
+              <div className="flex gap-1.5 px-1.5 py-1.5 sticky top-0 z-[5] bg-card border-b border-border/60 font-medium text-muted-foreground">
                 {cols.map((c) => (
-                  <div key={c} className="cell mono dgCell">
+                  <div key={c} className="w-[150px] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px]">
                     {c}
                   </div>
                 ))}
               </div>
-              <div
-                style={{
-                  height: `${rowVirtualizer.getTotalSize()}px`,
-                  position: 'relative',
-                }}
-              >
+              <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: 'relative' }}>
                 {rowVirtualizer.getVirtualItems().map((v) => {
                   const r = filteredSorted[v.index] ?? {};
                   return (
                     <div
                       key={v.key}
-                      className="row"
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        transform: `translateY(${v.start}px)`,
-                      }}
+                      className="flex gap-1.5 px-1.5 py-1 border-b border-border/20 hover:bg-muted/20 items-baseline"
+                      style={{ position: 'absolute', top: 0, left: 0, transform: `translateY(${v.start}px)` }}
                     >
                       {cols.map((c) => (
-                        <div key={c} className="cell mono dgCell">
-                          {asSortableString(r[c])}
+                        <div key={c} className="w-[150px] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px]">
+                          <JsonPopover value={r[c]}>
+                            {asSortableString(r[c])}
+                          </JsonPopover>
                         </div>
                       ))}
                     </div>
@@ -253,7 +237,6 @@ export function DataGrid({
           </div>
         </div>
       </div>
-    </div>
+    </TerminalPanel>
   );
 }
-

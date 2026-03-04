@@ -1,4 +1,4 @@
-import { defineScenario } from '@elata-biosciences/agentforge';
+import { defineScenario } from '../../../src/index.js';
 import { SearcherAgent } from './agents/SearcherAgent.js';
 import { UserAgent } from './agents/UserAgent.js';
 import { OrderingPack } from './pack.js';

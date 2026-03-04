@@ -35,8 +35,14 @@ async function hasFile(p: string): Promise<boolean> {
 async function readSummary(runDirAbs: string): Promise<RunSummary | null> {
   const p = join(runDirAbs, 'summary.json');
   if (!(await hasFile(p))) return null;
-  const raw = await readFile(p, 'utf-8');
-  return JSON.parse(raw) as RunSummary;
+  try {
+    const raw = await readFile(p, 'utf-8');
+    const parsed = JSON.parse(raw) as RunSummary;
+    if (!parsed || typeof parsed.timestamp !== 'string') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 async function collectCandidateRunDirs(absRoot: string): Promise<string[]> {

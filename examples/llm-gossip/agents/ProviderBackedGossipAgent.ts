@@ -59,7 +59,6 @@ export class ProviderBackedGossipAgent extends BaseAgent {
       channel,
       { text },
       {
-        intentTag: 'inform',
         audience: { type: 'public' },
         credibilityPrior: ctx.mode === 'exploration' ? 0.7 : 0.95,
       }

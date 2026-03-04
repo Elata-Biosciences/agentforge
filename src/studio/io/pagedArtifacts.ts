@@ -17,7 +17,6 @@ export type ActionsPageQuery = {
   limit: number;
   agentIdContains?: string;
   personaIdContains?: string;
-  intentTagContains?: string;
   llmSourceContains?: string;
   actionFamilyContains?: string;
   ok?: boolean;
@@ -43,8 +42,6 @@ export function parseActionsPageQuery(url: URL): ActionsPageQuery {
     url.searchParams.get('agentId') ?? url.searchParams.get('agentIdContains');
   const personaIdContains =
     url.searchParams.get('personaId') ?? url.searchParams.get('personaIdContains');
-  const intentTagContains =
-    url.searchParams.get('intentTag') ?? url.searchParams.get('intentTagContains');
   const llmSourceContains =
     url.searchParams.get('llmSource') ?? url.searchParams.get('llmSourceContains');
   const actionFamilyContains = url.searchParams.get('actionFamily');
@@ -54,7 +51,6 @@ export function parseActionsPageQuery(url: URL): ActionsPageQuery {
     limit,
     ...(agentIdContains ? { agentIdContains } : {}),
     ...(personaIdContains ? { personaIdContains } : {}),
-    ...(intentTagContains ? { intentTagContains } : {}),
     ...(llmSourceContains ? { llmSourceContains } : {}),
     ...(actionFamilyContains ? { actionFamilyContains } : {}),
     ...(ok !== undefined ? { ok } : {}),
@@ -70,7 +66,6 @@ export async function readActionsPage(
 
   const needle = normalizeNeedle(query.agentIdContains);
   const personaNeedle = normalizeNeedle(query.personaIdContains);
-  const intentNeedle = normalizeNeedle(query.intentTagContains);
   const llmSourceNeedle = normalizeNeedle(query.llmSourceContains);
   const familyNeedle = normalizeNeedle(query.actionFamilyContains);
   const stream = createReadStream(filePath, { encoding: 'utf-8' });
@@ -96,10 +91,6 @@ export async function readActionsPage(
       if (personaNeedle) {
         const pid = String((row as any).action?.metadata?.personaId ?? '').toLowerCase();
         if (!pid.includes(personaNeedle)) continue;
-      }
-      if (intentNeedle) {
-        const tag = String((row as any).action?.metadata?.intentTag ?? '').toLowerCase();
-        if (!tag.includes(intentNeedle)) continue;
       }
       if (llmSourceNeedle) {
         const src = String((row as any).action?.metadata?.llmSource ?? '').toLowerCase();

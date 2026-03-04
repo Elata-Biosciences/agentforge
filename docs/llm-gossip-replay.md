@@ -110,16 +110,37 @@ The gossip bus supports:
 - global and topic channels,
 - direct/group channel semantics by membership,
 - posting/read budgets per tick,
-- delivery queue with optional latency/drop controls.
+- delivery queue with optional latency/drop controls,
+- free-form text payloads (no structured intent tags).
 
 This allows bounded-information experiments without changing the deterministic kernel.
 
-### Trust/Misinfo (Minimal Primitives)
+### Strategy Channels
 
+Channels can be scoped to specific agent sets via `members`. This is useful for creating
+LLM-only coordination channels where intelligent agents discuss strategy without flooding
+deterministic agents that don't process gossip:
+
+```typescript
+gossip: {
+  channels: [
+    { id: 'global', members: 'all' },
+    { id: 'strategy', members: ['LlmAgent-0', 'LlmAgent-1', 'LlmAgent-2'] },
+  ],
+  budgets: { maxPostsPerTick: 3, maxReadsPerTick: 10 },
+}
+```
+
+### Trust Primitives
+
+Each message carries an optional `credibilityPrior` (0-1) set by the posting agent.
 Channels can optionally enforce:
 
 - `postCooldownTicks`: deterministic cooldown between posts per agent per channel
 - `minCredibilityPrior` / `maxCredibilityPrior`: clamps message `credibilityPrior` into a channel-defined range
+
+Receiving agents can use credibility scores to weight information, enabling trust modeling,
+misinformation experiments, and adversarial coordination studies.
 
 For "external shocks" and controlled misinformation, use scheduled `gossip_inject` events (below) with low credibility.
 
@@ -135,7 +156,7 @@ Example:
 
 ```typescript
 schedule: [
-  { tick: 10, type: 'gossip_inject', payload: { channelId: 'global', text: 'stablecoin depegged', intentTag: 'inform', credibilityPrior: 0.9 } },
+  { tick: 10, type: 'gossip_inject', payload: { channelId: 'global', text: 'stablecoin depegged', credibilityPrior: 0.9 } },
   { tick: 10, type: 'world_overlay', payload: { overrides: { shock_stablecoin: 'depeg' } } },
 ]
 ```

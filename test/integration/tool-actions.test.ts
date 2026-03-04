@@ -32,7 +32,7 @@ class ToolActionAgent extends BaseAgent {
       return {
         id: this.generateActionId('PostMessage', ctx.tick),
         name: 'PostMessage',
-        params: { channelId: 'global', text: 'hello', intentTag: 'inform' },
+        params: { channelId: 'global', text: 'hello' },
       };
     }
     return { id: this.generateActionId('DoNothing', ctx.tick), name: 'DoNothing', params: {} };

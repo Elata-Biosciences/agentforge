@@ -27,7 +27,6 @@ export function createDefaultActionRegistry(): InMemoryActionValidatorRegistry {
   registry.register('PostMessage', (action) => {
     const channelId = action.params.channelId;
     const text = action.params.text;
-    const intentTag = action.params.intentTag;
     if (typeof channelId !== 'string' || channelId.length === 0) {
       return { ok: false, error: 'PostMessage requires channelId' };
     }
@@ -40,26 +39,6 @@ export function createDefaultActionRegistry(): InMemoryActionValidatorRegistry {
     }
     if (trimmed.length > 600) {
       return { ok: false, error: 'PostMessage text exceeds max length (600)' };
-    }
-    if (intentTag !== undefined) {
-      const normalized = String(intentTag).trim();
-      const allowed = new Set([
-        'inform',
-        'persuade',
-        'coordinate',
-        'deceive',
-        'probe',
-        'other',
-        'creator',
-        'economic',
-        'bad_actor',
-        'saboteur',
-        'hacker',
-        'observer',
-      ]);
-      if (!allowed.has(normalized)) {
-        return { ok: false, error: `PostMessage intentTag invalid:${normalized}` };
-      }
     }
     return { ok: true };
   });

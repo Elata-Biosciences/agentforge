@@ -16,12 +16,7 @@ export class GossipChatterAgent extends BaseAgent {
     const price = (ctx.pack.getMetrics() as any)?.[`price_${asset}`];
     const text = `tick=${ctx.tick} asset=${asset} price=${String(price ?? '?')}`;
     const channel = (['global', 'markets', 'governance'] as const)[ctx.tick % 3] ?? 'global';
-    ctx.gossip.postMessage(
-      this.id,
-      channel,
-      { text },
-      { intentTag: 'inform', audience: { type: 'public' } }
-    );
+    ctx.gossip.postMessage(this.id, channel, { text }, { audience: { type: 'public' } });
     return null;
   }
 }
