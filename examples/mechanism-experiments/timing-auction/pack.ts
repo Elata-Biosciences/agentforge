@@ -1,4 +1,4 @@
-import type { Action, ActionResult, Pack, WorldState } from '@elata-biosciences/agentforge';
+import type { Action, ActionResult, Pack, WorldState } from '../../../src/core/types.js';
 
 /**
  * Configuration for the AuctionPack

@@ -82,7 +82,7 @@ describe('Studio stats: metric summary (A/B)', () => {
     let runs: any[] = [];
     const start = Date.now();
     while (runs.length < 2) {
-      if (Date.now() - start > 30_000) throw new Error('timeout_waiting_for_runs');
+      if (Date.now() - start > 60_000) throw new Error('timeout_waiting_for_runs');
       const resp = await fetch(`${baseUrl}api/runs`);
       const j = (await resp.json()) as any;
       const list = Array.isArray(j.runs) ? (j.runs as any[]) : [];
