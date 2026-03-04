@@ -65,7 +65,7 @@ describe('Studio stats: metric summary (A/B)', () => {
       ws.on('error', reject);
     });
 
-    async function startToy(seed: number): Promise<void> {
+    async function startToyAndWait(seed: number, expectedCount: number): Promise<any[]> {
       const resp = await fetch(`${baseUrl}api/runs/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -74,22 +74,20 @@ describe('Studio stats: metric summary (A/B)', () => {
       expect(resp.status).toBe(200);
       const j = (await resp.json()) as any;
       expect(j.ok).toBe(true);
+
+      const deadline = Date.now() + 60_000;
+      while (Date.now() < deadline) {
+        const listResp = await fetch(`${baseUrl}api/runs`);
+        const listJson = (await listResp.json()) as any;
+        const list = Array.isArray(listJson.runs) ? (listJson.runs as any[]) : [];
+        if (list.length >= expectedCount) return list;
+        await delay(300);
+      }
+      throw new Error(`timeout_waiting_for_runs (expected ${expectedCount})`);
     }
 
-    await startToy(1);
-    await startToy(2);
-
-    let runs: any[] = [];
-    const start = Date.now();
-    while (runs.length < 2) {
-      if (Date.now() - start > 90_000) throw new Error('timeout_waiting_for_runs');
-      const resp = await fetch(`${baseUrl}api/runs`);
-      const j = (await resp.json()) as any;
-      const list = Array.isArray(j.runs) ? (j.runs as any[]) : [];
-      runs = list;
-      if (runs.length >= 2) break;
-      await delay(200);
-    }
+    await startToyAndWait(1, 1);
+    const runs = await startToyAndWait(2, 2);
 
     const runIds = runs.slice(0, 2).map((r: any) => String(r.id));
     const metricKey = 'totalVolume';
