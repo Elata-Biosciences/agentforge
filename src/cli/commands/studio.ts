@@ -42,6 +42,7 @@ const CONTENT_TYPES: Record<string, string> = {
   '.jpeg': 'image/jpeg',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
+  '.md': 'text/markdown; charset=utf-8',
 };
 
 function logInfo(msg: string, extra?: Record<string, unknown>): void {
@@ -1192,6 +1193,68 @@ export const studioCommand = new Command('studio')
             res.end('Not Found');
             return;
           }
+        }
+
+        // --- Docs API ---
+        if (path === '/api/docs' && req.method === 'GET') {
+          const docsDir = resolve(
+            dirname(fileURLToPath(import.meta.url)),
+            '..',
+            '..',
+            '..',
+            'docs'
+          );
+          const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+          const docs: Array<{ title: string; path: string }> = [];
+
+          const rootFiles = ['README.md', 'CONTRIBUTING.md', 'CHANGELOG.md'];
+          for (const f of rootFiles) {
+            try {
+              const content = await readFile(join(projectRoot, f), 'utf8');
+              const headingMatch = content.match(/^#\s+(.+)/m);
+              docs.push({ title: headingMatch?.[1] ?? f.replace('.md', ''), path: f });
+            } catch {
+              /* skip missing files */
+            }
+          }
+
+          try {
+            const files = await readdir(docsDir);
+            for (const f of files.filter((n) => n.endsWith('.md')).sort()) {
+              try {
+                const content = await readFile(join(docsDir, f), 'utf8');
+                const headingMatch = content.match(/^#\s+(.+)/m);
+                docs.push({ title: headingMatch?.[1] ?? f.replace('.md', ''), path: `docs/${f}` });
+              } catch {
+                /* skip */
+              }
+            }
+          } catch {
+            /* docs dir may not exist */
+          }
+
+          json(res, 200, { ok: true, docs });
+          return;
+        }
+
+        const docsPathMatch = /^\/api\/docs\/(.+)$/.exec(path);
+        if (docsPathMatch?.[1] && req.method === 'GET') {
+          const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+          const requestedPath = decodeURIComponent(docsPathMatch[1]);
+          const abs = safeJoin(projectRoot, `/${requestedPath}`);
+          if (!abs || !requestedPath.endsWith('.md')) {
+            json(res, 400, { ok: false, error: 'invalid_doc_path' });
+            return;
+          }
+          try {
+            const content = await readFile(abs, 'utf8');
+            res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+            res.statusCode = 200;
+            res.end(content);
+          } catch {
+            json(res, 404, { ok: false, error: 'doc_not_found' });
+          }
+          return;
         }
 
         // --- UI static files ---

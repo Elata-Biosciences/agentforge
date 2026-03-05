@@ -39,7 +39,7 @@ export const LlmPlanIntentSchema = z.object({
 export type LlmPlanIntentInput = z.infer<typeof LlmPlanIntentSchema>;
 
 export const ReplayBundleSchema = z.object({
-  version: z.literal('v1'),
+  version: z.enum(['v1', 'v2']),
   scenarioName: z.string().min(1),
   seed: z.number().int(),
   mode: z.enum(['deterministic', 'exploration', 'replay']),
@@ -55,6 +55,13 @@ export const ReplayBundleSchema = z.object({
           metadata: z.record(z.unknown()).optional(),
         })
         .nullable(),
+      result: z
+        .object({
+          ok: z.boolean(),
+          error: z.string().optional(),
+        })
+        .optional(),
+      metricsSnapshot: z.record(z.number()).optional(),
     })
   ),
   messages: z.array(z.object({ tick: z.number().int().nonnegative(), message: z.unknown() })),

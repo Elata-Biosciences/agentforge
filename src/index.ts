@@ -34,6 +34,7 @@ export { GossipBus, createDefaultGossipConfig } from './gossip/bus.js';
 export { QueryApi } from './query/queryApi.js';
 export { QueryBudgetManager } from './query/budgetManager.js';
 export { ReplayRecorder, loadReplayBundle, saveReplayBundle } from './replay/bundle.js';
+export { DivergenceTracker } from './replay/divergence.js';
 export { ArbitraryExecutor } from './exploration/arbitraryExecutor.js';
 export { LlmPolicyAgent } from './agents/llm/llmPolicyAgent.js';
 export {

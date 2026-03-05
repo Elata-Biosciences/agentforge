@@ -2,6 +2,7 @@ import type { Logger } from 'pino';
 import { GossipBus, createDefaultGossipConfig } from '../gossip/bus.js';
 import { QueryApi } from '../query/queryApi.js';
 import { ReplayRecorder, loadReplayBundle, selectReplayAction } from '../replay/bundle.js';
+import { DivergenceTracker } from '../replay/divergence.js';
 import { createDefaultActionRegistry } from './actionRegistry.js';
 import type { BaseAgent } from './agent.js';
 import { ArtifactsWriter, generateRunId } from './artifacts.js';
@@ -216,6 +217,8 @@ export class SimulationEngine {
       }
       replayBundle = await loadReplayBundle(resolvedOptions.replayBundlePath);
     }
+    const divergenceTracker =
+      resolvedOptions.mode === 'replay' && replayBundle ? new DivergenceTracker() : null;
     const smokeResults: SmokeDivergenceResult[] = [];
 
     // Initialize agents
@@ -254,7 +257,8 @@ export class SimulationEngine {
         resolvedOptions,
         actionRegistry,
         smokeResults,
-        lastResults
+        lastResults,
+        divergenceTracker
       );
 
       // Sample probes at configured interval (and optionally emit into metrics.csv).
@@ -336,10 +340,16 @@ export class SimulationEngine {
       agentStats: agents.map((a) => a.getStats()),
       outputDir: artifactsWriter.getRunDir(),
     };
-    const result: RunResult =
+    let result: RunResult =
       replayOutputPath !== undefined
         ? { ...resultBase, replayBundlePath: replayOutputPath }
         : resultBase;
+
+    if (divergenceTracker) {
+      const divergence = divergenceTracker.build();
+      result = { ...result, replayDivergence: divergence };
+      artifactsWriter.setReplayDivergence(divergence);
+    }
 
     if (resolvedOptions.mode === 'exploration') {
       artifactsWriter.setReplayBundle(
@@ -448,7 +458,8 @@ export class SimulationEngine {
     resolvedOptions: ResolvedRunOptions,
     actionRegistry: ReturnType<typeof createDefaultActionRegistry>,
     smokeResults: SmokeDivergenceResult[],
-    lastResults: Map<string, ActionResult | null>
+    lastResults: Map<string, ActionResult | null>,
+    divergenceTracker: DivergenceTracker | null = null
   ): Promise<void> {
     this.logger.debug({ event: LogEvents.TICK_START, tick }, `Tick ${tick}`);
 
@@ -495,6 +506,29 @@ export class SimulationEngine {
     // Get tick-specific RNG
     const tickRng = rng.derive(tick);
 
+    // Phase: replay gossip messages from bundle (ensures same information environment)
+    if (resolvedOptions.mode === 'replay' && replayBundle) {
+      const tickMessages = replayBundle.messages.filter((m) => m.tick === tick);
+      for (const { message } of tickMessages) {
+        if (message?.envelope && message?.payload) {
+          const env = message.envelope as {
+            authorAgentId?: string;
+            channelId?: string;
+            credibilityPrior?: number;
+          };
+          const pay = message.payload as { text?: string };
+          if (env.authorAgentId && env.channelId && pay.text) {
+            const replayRng = tickRng.derive(tick, env.authorAgentId);
+            gossipBus.postMessage(env.authorAgentId, env.channelId, { text: pay.text }, replayRng, {
+              ...(typeof env.credibilityPrior === 'number'
+                ? { credibilityPrior: env.credibilityPrior }
+                : {}),
+            });
+          }
+        }
+      }
+    }
+
     // Determine agent order
     const orderedAgents = this.scheduler.getOrder(agents, tick, tickRng);
 
@@ -512,8 +546,20 @@ export class SimulationEngine {
         replayRecorder,
         resolvedOptions,
         actionRegistry,
-        lastResults
+        lastResults,
+        divergenceTracker
       );
+    }
+
+    // Record replay metrics snapshot for divergence tracking
+    if (divergenceTracker) {
+      const currentMetrics = metricsCollector.getFinalMetrics();
+      const numericMetrics: Record<string, number> = {};
+      for (const [k, v] of Object.entries(currentMetrics)) {
+        const n = typeof v === 'bigint' ? Number(v) : typeof v === 'number' ? v : Number.NaN;
+        if (Number.isFinite(n)) numericMetrics[k] = n;
+      }
+      divergenceTracker.setReplayMetrics(tick, numericMetrics);
     }
 
     // Record agent memory snapshots (optional; artifacts only).
@@ -559,7 +605,8 @@ export class SimulationEngine {
     replayRecorder: ReplayRecorder,
     resolvedOptions: ResolvedRunOptions,
     actionRegistry: ReturnType<typeof createDefaultActionRegistry>,
-    lastResults: Map<string, ActionResult | null>
+    lastResults: Map<string, ActionResult | null>,
+    divergenceTracker: DivergenceTracker | null = null
   ): Promise<void> {
     const agentRng = tickRng.derive(tick, agent.id);
 
@@ -757,11 +804,27 @@ export class SimulationEngine {
         });
 
         if (resolvedOptions.mode === 'exploration') {
+          const recordedResult = result
+            ? { ok: result.ok, ...(result.error ? { error: result.error } : {}) }
+            : undefined;
           replayRecorder.recordAction({
             tick,
             agentId: agent.id,
             action,
+            ...(recordedResult ? { result: recordedResult } : {}),
           });
+        }
+
+        if (divergenceTracker && replayBundle) {
+          const recorded = selectReplayAction(replayBundle, tick, agent.id);
+          divergenceTracker.recordAction(
+            tick,
+            agent.id,
+            action.name,
+            recorded?.result,
+            result!,
+            recorded?.metricsSnapshot
+          );
         }
 
         lastResults.set(agent.id, result);

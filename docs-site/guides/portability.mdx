@@ -1,0 +1,118 @@
+---
+title: Portability Guide
+description: How to use AgentForge in other repositories and with different LLM providers.
+---
+
+This guide explains how to use AgentForge in other repositories and with different LLM providers.
+
+## Use AgentForge In Another Repo
+
+1. Add AgentForge dependency:
+
+```bash
+pnpm add @elata-biosciences/agentforge
+```
+
+2. Create a simulation directory:
+
+```bash
+npx forge-sim init sim
+```
+
+3. Implement a project-specific `Pack` that:
+- initializes contracts/state,
+- exposes world state via `getWorldState()`,
+- executes actions via `executeAction()`,
+- returns protocol metrics via `getMetrics()`.
+
+4. Author scenarios and run:
+
+```bash
+forge-sim run sim/scenarios/stress.ts --mode deterministic
+forge-sim run sim/scenarios/stress.ts --mode exploration
+forge-sim run sim/scenarios/stress.ts --mode replay --replay-bundle sim/results/<run>/replay_bundle.json
+```
+
+## Pack Authoring Checklist
+
+- Keep world state deterministic for non-exploration runs.
+- Ensure `executeAction()` returns stable success/error semantics.
+- Expose metrics that matter for exploit and mechanism evaluation.
+- Optionally implement `callRpc()` and `getDeployedContracts()` for exploration allowlists.
+- Keep action names stable across versions to preserve replay compatibility.
+
+## Multi-Provider LLM Setup
+
+AgentForge uses a provider-neutral LLM client interface. You can run:
+- OpenAI models,
+- Anthropic models,
+- local and hosted OpenAI-compatible endpoints (for example Ollama/vLLM gateways, DeepSeek, Kimi),
+- OpenRouter routing (many models behind one API key),
+- Gemini (Google).
+
+### DeepSeek/Kimi via OpenAI-Compatible Endpoints
+
+Use provider `openai-compatible` with a custom `baseUrl` and `apiKey`.
+
+Environment example:
+
+```bash
+export OPENAI_COMPAT_BASE_URL="https://api.deepseek.com/v1"
+export OPENAI_COMPAT_API_KEY="..."
+export OPENAI_COMPAT_MODEL="deepseek-chat"
+```
+
+Or for Kimi (Moonshot) if using an OpenAI-style gateway:
+
+```bash
+export OPENAI_COMPAT_BASE_URL="https://api.moonshot.cn/v1"
+export OPENAI_COMPAT_API_KEY="..."
+export OPENAI_COMPAT_MODEL="moonshot-v1-32k"
+```
+
+Notes:
+- vendors differ in model naming; keep `OPENAI_COMPAT_MODEL` explicit.
+- response shapes can vary; if a vendor returns non-standard JSON, you may need a thin adapter.
+
+### OpenRouter
+
+Provider `openrouter` calls OpenRouter's chat completions API with OpenRouter-specific headers.
+
+```bash
+export OPENROUTER_API_KEY="..."
+export OPENROUTER_MODEL="openai/gpt-4o-mini"
+export OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
+
+# Optional (recommended) metadata:
+export OPENROUTER_APP_NAME="agentforge-validation"
+export OPENROUTER_APP_URL="https://github.com/Elata-Biosciences/agentforge"
+```
+
+### Gemini
+
+Provider `gemini` uses the Google Generative Language API.
+
+```bash
+export GEMINI_API_KEY="..."
+export GEMINI_MODEL="gemini-1.5-flash"
+```
+
+Recommended pattern:
+- baseline with one provider/model,
+- repeat exploration with alternative providers,
+- replay all resulting bundles on contract updates.
+
+## Cross-Repo Red-Team Campaign Workflow
+
+1. Run deterministic baseline to establish KPIs.
+2. Run exploration campaigns with multiple providers/models.
+3. Store replay bundles as long-lived campaign artifacts.
+4. Modify contracts (new version/fix).
+5. Re-run replay bundles to check exploit persistence or mitigation.
+6. Compare metrics and exploit outcomes between versions.
+
+## Suggested CI Structure
+
+- Job A: deterministic regression suite.
+- Job B: replay campaigns from prior exploration bundles.
+- Job C (optional/manual): live exploration runs with LLM providers.

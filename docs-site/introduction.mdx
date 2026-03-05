@@ -1,0 +1,175 @@
+---
+title: Introduction
+description: Agent-based simulation framework for Foundry and EVM smart contracts. Stress-test your protocol before mainnet does it for you.
+---
+
+AgentForge simulates how your protocol behaves when many autonomous agents — traders, arbitrageurs, liquidators, LLM-driven strategists — act simultaneously with competing strategies over time. It fills the gap between isolated unit tests and production:
+
+| Layer | Tests | Example |
+|-------|-------|---------|
+| Unit tests | Individual functions | `test_transfer()` |
+| Fuzz tests | Random inputs | `testFuzz_transfer(uint256 amount)` |
+| **AgentForge** | **Multi-actor emergent behavior** | **Traders, arbitrageurs, liquidators competing** |
+| Mainnet | Real users | Production |
+
+## See It In Action
+
+The [Uniswap v4 AgentForge Demo](/examples/uniswap-demo) demonstrates AgentForge integrated into a fork of the Uniswap v4 protocol. It includes:
+
+- Deterministic and LLM-driven agent strategies for Uniswap v4 pools
+- Multi-action agents that trade and communicate within the same tick
+- Strategy channels for LLM agent coordination
+- Studio dashboards with financial charts, gossip analysis, and ML tooling
+
+## Quick Start
+
+```bash
+# Install
+pnpm add @elata-biosciences/agentforge
+
+# Scaffold a simulation folder
+npx forge-sim init
+
+# Run the built-in toy scenario
+npx forge-sim run --toy
+
+# Launch the Studio dashboard
+npx forge-sim studio
+```
+
+Requirements: Node.js 18+ and optionally [Foundry](https://book.getfoundry.sh/getting-started/installation) with Anvil for EVM simulations.
+
+## Writing Your First Agent
+
+**1. Define an agent** that observes state and decides actions each tick:
+
+```typescript
+import { BaseAgent, type Action, type TickContext } from '@elata-biosciences/agentforge';
+
+export class MyTrader extends BaseAgent {
+  async step(ctx: TickContext): Promise<Action | Action[] | null> {
+    if (ctx.rng.chance(0.3)) {
+      return {
+        id: this.generateActionId('buy', ctx.tick),
+        name: 'buy',
+        params: { amount: ctx.rng.nextInt(1, 100), asset: 'TOKEN' },
+      };
+    }
+    return null;
+  }
+}
+```
+
+**2. Define a scenario** that wires agents together:
+
+```typescript
+import { defineScenario } from '@elata-biosciences/agentforge';
+import { ToyPack, RandomTraderAgent, MomentumAgent } from '@elata-biosciences/agentforge/toy';
+
+export default defineScenario({
+  name: 'market-stress',
+  seed: 42,
+  ticks: 100,
+  tickSeconds: 3600,
+  pack: new ToyPack({
+    assets: [{ name: 'TOKEN', initialPrice: 100, volatility: 0.05 }],
+    initialCash: 10000,
+  }),
+  agents: [
+    { type: RandomTraderAgent, count: 10 },
+    { type: MomentumAgent, count: 5, params: { threshold: 0.02 } },
+  ],
+  assertions: [
+    { type: 'gt', metric: 'totalVolume', value: 0 },
+    { type: 'gte', metric: 'successRate', value: 0.9 },
+  ],
+});
+```
+
+**3. Run it:**
+
+```bash
+npx forge-sim run sim/scenarios/market-stress.ts --seed 42
+```
+
+**4. Inspect results** — every run produces durable artifacts:
+
+```
+results/market-stress-ci/
+├── summary.json          # Run metadata, final metrics, assertion results
+├── metrics.csv           # Time-series data for analysis
+├── actions.ndjson        # Complete action log
+├── gossip.ndjson         # Gossip posts/deliveries
+├── config_resolved.json  # Resolved configuration for reproducibility
+├── replay_bundle.json    # Exploration trace bundle for replay mode
+└── report.md             # Generated report
+```
+
+**5. Launch Studio** for multi-run dashboards:
+
+```bash
+npx forge-sim studio
+```
+
+## Agents
+
+Agents are autonomous actors with access to:
+
+- `ctx.rng` — Deterministic random number generator
+- `ctx.world` — Current protocol state
+- `ctx.gossip` — Read/post gossip messages
+- `ctx.capabilities` — Available contracts, tools, and action templates
+- `this.remember()` / `this.recall()` — Persist state across ticks
+- `this.setCooldown()` / `this.isOnCooldown()` — Rate-limit actions
+
+### Multi-Action Support
+
+Agents can return a single action, an array of up to 3 actions, or `null`. The engine executes each action in order within the same tick:
+
+```typescript
+async step(ctx: TickContext): Promise<Action | Action[] | null> {
+  const trade = { id: this.generateActionId('swap', ctx.tick), name: 'u4_swap', params: { poolId: 'eth_usdc', side: 'buy_token0', amountIn: 1000 } };
+  const note = { id: this.generateActionId('post', ctx.tick), name: 'PostMessage', params: { channelId: 'strategy', text: 'Bought ETH — expecting upward pressure' } };
+  return [trade, note];
+}
+```
+
+### Persona LLM Agents
+
+`PersonaLlmAgentBase` provides a reusable base for persona-driven LLM agents with:
+
+- Persona profile (id, style, goals, risk profile, tool preferences)
+- Structured prompt assembly with full capability manifest context
+- Two-stage OODA loop: plan then act, with fallback to single-shot action parsing
+- Multi-action support — LLMs can return arrays of actions (e.g., trade + gossip)
+- Schema-validated action intents via Zod
+
+## Gossip
+
+The gossip bus enables bounded inter-agent communication:
+
+- **Channels**: global broadcast or scoped strategy channels with membership lists
+- **Free-form messages**: agents post text payloads with optional `credibilityPrior` scores
+- **Budgets**: configurable `maxPostsPerTick` and `maxReadsPerTick` per agent
+- **Trust primitives**: `credibilityPrior` (0-1) for information weighting
+- **Cooldowns**: per-channel `postCooldownTicks` to rate-limit posting
+
+## Studio Dashboard
+
+`forge-sim studio` launches a Bloomberg Terminal-inspired dashboard for multi-run analysis:
+
+- **Session management** — browse all runs, build/open dashboards, download artifacts
+- **Financial charts** — interactive Lightweight Charts with zoom/pan
+- **Timeline inspector** — virtualized action log with JSON inspection
+- **Gossip analysis** — channel-level message flow, author tracking
+- **Agent stats** — per-agent action counts, success rates, drill-down
+- **ML toolkit** — regression, PCA, k-means, cross-run metric comparison
+- **Keyboard-driven** — tab navigation, command palette, terminal aesthetic
+
+## Determinism
+
+Same seed + same scenario = identical results. All randomness derives from seeded RNG.
+
+## Packs
+
+Packs are protocol adapters that set up world state and handle contract interactions. Implement the `Pack` interface to bridge AgentForge to your protocol.

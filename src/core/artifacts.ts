@@ -56,6 +56,7 @@ export class ArtifactsWriter {
   private readonly runDir: string;
   private readonly actions: RecordedAction[] = [];
   private replayBundle: ReplayBundle | null = null;
+  private replayDivergence: import('./types.js').ReplayDivergenceResult | null = null;
   private smokeResults: SmokeDivergenceResult[] = [];
   private logFileHandle: Awaited<ReturnType<typeof import('node:fs/promises').open>> | null = null;
   private memoryFileHandle: Awaited<ReturnType<typeof import('node:fs/promises').open>> | null =
@@ -247,6 +248,7 @@ export class ArtifactsWriter {
       this.writeConfig(scenario, options),
       this.writeReplayBundle(),
       this.writeSmokeResults(),
+      this.writeReplayDivergence(),
     ]);
 
     await this.flushAgentMemory();
@@ -353,6 +355,10 @@ export class ArtifactsWriter {
     this.replayBundle = bundle;
   }
 
+  setReplayDivergence(divergence: import('./types.js').ReplayDivergenceResult): void {
+    this.replayDivergence = divergence;
+  }
+
   setSmokeResults(results: SmokeDivergenceResult[]): void {
     this.smokeResults = results;
   }
@@ -380,6 +386,15 @@ export class ArtifactsWriter {
     const path = join(this.runDir, 'smoke_results.json');
     await writeFile(path, `${JSON.stringify(this.smokeResults, null, 2)}\n`);
     this.logger?.debug({ path }, 'Wrote smoke_results.json');
+  }
+
+  async writeReplayDivergence(): Promise<void> {
+    if (!this.replayDivergence) {
+      return;
+    }
+    const path = join(this.runDir, 'replay_divergence.json');
+    await writeFile(path, `${JSON.stringify(this.replayDivergence, null, 2)}\n`);
+    this.logger?.debug({ path }, 'Wrote replay_divergence.json');
   }
 
   /**
