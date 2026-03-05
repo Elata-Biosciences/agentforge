@@ -17,14 +17,9 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/studio-home.png" alt="AgentForge Studio — Bloomberg-style simulation dashboard" width="820">
+  <img src="docs/screenshots/run-overview.png" alt="AgentForge Studio — run overview with metrics and charts" width="820">
 </p>
-<p align="center"><em>AgentForge Studio — real-time simulation dashboard with financial charts, gossip analysis, and ML tooling</em></p>
-
-<p align="center">
-  <img src="docs/screenshots/run-report.png" alt="AgentForge Studio — post-run analysis report" width="820">
-</p>
-<p align="center"><em>Post-run analysis report with experiment notes, hypotheses, success criteria, and core metrics</em></p>
+<p align="center"><em>Run overview — summary, final metrics, artifact fingerprints, and Lightweight Charts time series</em></p>
 
 ---
 

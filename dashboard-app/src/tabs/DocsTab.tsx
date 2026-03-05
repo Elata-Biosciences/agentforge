@@ -91,7 +91,7 @@ export function DocsTab({ studioHost }: { studioHost: string }) {
             <div className="text-xs text-muted-foreground">Loading...</div>
           ) : content ? (
             <div className="max-h-[calc(100vh-200px)] overflow-auto pr-2">
-              <MarkdownRenderer content={content} />
+              <MarkdownRenderer content={content} basePath={selectedPath ?? undefined} assetHost={studioHost} />
             </div>
           ) : (
             <div className="text-xs text-muted-foreground">

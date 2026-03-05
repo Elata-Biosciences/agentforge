@@ -37,7 +37,7 @@ Inspector views.
 - Use `replay` after contract changes to validate whether previously discovered behaviors still reproduce.
 - Typical loop: `deterministic` baseline -> `exploration` discovery -> `replay` regression on new versions.
 
-## Exploration/Replay Workflow (Legacy "Mode C")
+## Exploration/Replay Workflow
 
 1. Run exploration to discover behaviors:
 

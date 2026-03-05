@@ -1257,6 +1257,37 @@ export const studioCommand = new Command('studio')
           return;
         }
 
+        const docsAssetMatch = /^\/api\/docs-asset\/(.+)$/.exec(path);
+        if (docsAssetMatch?.[1] && req.method === 'GET') {
+          const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+          const requestedPath = decodeURIComponent(docsAssetMatch[1]);
+          const abs = safeJoin(projectRoot, `/${requestedPath}`);
+          if (!abs) {
+            res.statusCode = 400;
+            res.end('Bad Request');
+            return;
+          }
+          try {
+            const info = await stat(abs);
+            if (!info.isFile()) {
+              res.statusCode = 404;
+              res.end('Not Found');
+              return;
+            }
+            const body = await readFile(abs);
+            res.statusCode = 200;
+            res.setHeader(
+              'Content-Type',
+              CONTENT_TYPES[extname(abs).toLowerCase()] ?? 'application/octet-stream'
+            );
+            res.end(body);
+          } catch {
+            res.statusCode = 404;
+            res.end('Not Found');
+          }
+          return;
+        }
+
         // --- UI static files ---
         // Vite UI build uses relative asset paths (`./assets/*`, `./vite.svg`).
         // On routes like /runs/<id>, browsers resolve those to /runs/assets/* and /runs/vite.svg.

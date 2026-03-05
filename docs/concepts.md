@@ -173,9 +173,7 @@ This is achieved through:
 4. **Deterministic Action IDs**: IDs use counters, not timestamps
 5. **Deterministic Ordering**: Agent order is reproducible
 
-### Exploration/Replay Workflow (Legacy "Mode C")
-
-Some early notes call this "Mode C", but the preferred term is **exploration/replay workflow**.
+### Exploration/Replay Workflow
 
 This introduces a two-step workflow:
 

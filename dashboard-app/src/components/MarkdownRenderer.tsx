@@ -1,7 +1,24 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-export function MarkdownRenderer({ content }: { content: string }) {
+interface MarkdownRendererProps {
+  content: string;
+  /** Base path for resolving relative image/link URLs (e.g. "docs/") */
+  basePath?: string;
+  /** Studio host for proxying doc assets (e.g. "http://localhost:8790") */
+  assetHost?: string;
+}
+
+function resolveImageSrc(src: string | undefined, basePath?: string, assetHost?: string): string {
+  if (!src) return '';
+  if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) return src;
+  if (!basePath || !assetHost) return src;
+  const dir = basePath.includes('/') ? basePath.slice(0, basePath.lastIndexOf('/') + 1) : '';
+  const resolved = dir ? `${dir}${src}` : src;
+  return `${assetHost}/api/docs-asset/${resolved}`;
+}
+
+export function MarkdownRenderer({ content, basePath, assetHost }: MarkdownRendererProps) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
@@ -30,6 +47,14 @@ export function MarkdownRenderer({ content }: { content: string }) {
           >
             {children}
           </a>
+        ),
+        img: ({ src, alt }) => (
+          <img
+            src={resolveImageSrc(src, basePath, assetHost)}
+            alt={alt ?? ''}
+            className="max-w-full rounded-sm border border-border/40 my-2"
+            loading="lazy"
+          />
         ),
         ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-0.5">{children}</ul>,
         ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-0.5">{children}</ol>,
