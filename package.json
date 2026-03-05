@@ -60,7 +60,10 @@
     "changeset": "changeset",
     "release:tag": "changeset tag",
     "docs": "typedoc",
-    "docs:watch": "typedoc --watch"
+    "docs:watch": "typedoc --watch",
+    "docs:generate": "typedoc --options typedoc.mintlify.json",
+    "docs:site": "npx mintlify dev --dir docs-site",
+    "docs:build": "npx mintlify build --dir docs-site"
   },
   "keywords": [
     "foundry",
@@ -107,6 +110,7 @@
     "husky": "^9.0.0",
     "lint-staged": "^15.0.0",
     "typedoc": "^0.27.0",
+    "typedoc-plugin-markdown": "^4.4.1",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0"
   },

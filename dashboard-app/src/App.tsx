@@ -22,6 +22,7 @@ import { TimelineTab } from '@/tabs/TimelineTab.tsx';
 import { AgentsTab } from '@/tabs/AgentsTab.tsx';
 import { GossipTab } from '@/tabs/GossipTab.tsx';
 import { DataTab } from '@/tabs/DataTab.tsx';
+import { DocsTab } from '@/tabs/DocsTab.tsx';
 import { ReportTab } from '@/tabs/ReportTab.tsx';
 
 function App() {
@@ -50,6 +51,7 @@ function App() {
   const [studioInspectAgentTotal, setStudioInspectAgentTotal] = useState<number>(0);
   const [studioInspectOffset, setStudioInspectOffset] = useState<number>(0);
   const [studioInspectRows, setStudioInspectRows] = useState<Array<Record<string, unknown>>>([]);
+  const [homeTab, setHomeTab] = useState<'runs' | 'docs'>('runs');
   const [studioInspectPersonaFilter] = useState('');
   const [studioInspectIntentFilter] = useState('');
   const [studioInspectLlmSourceFilter] = useState('');
@@ -383,6 +385,25 @@ function App() {
           }
         />
         <div className="max-w-[1400px] mx-auto p-3 space-y-3">
+          <div className="flex gap-1 border-b border-border/40 mb-2">
+            {(['runs', 'docs'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setHomeTab(t)}
+                className={`px-3 py-1.5 text-xs font-mono uppercase tracking-wide border-b-2 transition-colors ${
+                  homeTab === t
+                    ? 'border-terminal-tab-active text-terminal-tab-active'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
+          {homeTab === 'docs' && <DocsTab studioHost={studioHost} />}
+
+          {homeTab === 'runs' && <>
           <TerminalPanel title="Active Runs" actions={<button onClick={() => void refreshStudioRuns()} className={btn}>Refresh</button>}>
             {studioActiveRuns.length === 0 ? <div className="text-xs text-muted-foreground">No active runs.</div> : (
               <table className="w-full"><thead><tr className="border-b border-border/60">{['Started', 'Status', 'PID', 'Info'].map((h) => <th key={h} className="text-left text-[11px] text-muted-foreground py-1.5 px-2 font-medium">{h}</th>)}</tr></thead>
@@ -455,6 +476,7 @@ function App() {
                 ))}</tbody></table></div>
             )}
           </TerminalPanel>
+          </>}
         </div>
         <Toaster position="bottom-right" theme="dark" toastOptions={{ style: { background: 'hsl(220 20% 7%)', border: '1px solid hsl(220 10% 20%)', color: 'hsl(210 14% 92%)', fontFamily: 'var(--font-mono)', fontSize: '11px', borderRadius: '4px' } }} />
       </TerminalLayout>

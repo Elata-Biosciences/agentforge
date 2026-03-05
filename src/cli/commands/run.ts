@@ -57,6 +57,11 @@ export const runCommand = new Command('run')
   )
   .option('--mode <mode>', 'Run mode: deterministic | exploration | replay')
   .option('--replay-bundle <path>', 'Replay bundle path for mode=replay')
+  .option(
+    '--replay-fail-threshold <number>',
+    'Fail if replay divergence score exceeds this threshold (0.0 = any divergence fails)',
+    Number.parseFloat
+  )
   .option('--watch', 'Re-run simulation when scenario file changes')
   .option('--json', 'Output results as JSON')
   .action(async (scenarioPath, options) => {
@@ -297,6 +302,23 @@ export const runCommand = new Command('run')
         output.newline();
       }
 
+      // Replay divergence
+      if (result.replayDivergence) {
+        const d = result.replayDivergence;
+        output.newline();
+        output.subheader('Replay Divergence');
+        output.stat('Overall score', d.overallScore.toFixed(4));
+        output.stat('Divergent ticks', String(d.tickDivergences.length));
+        for (const td of d.tickDivergences.slice(0, 5)) {
+          const diverged = td.actionDivergences.filter((a) => a.score > 0);
+          if (diverged.length > 0) {
+            output.bullet(
+              `Tick ${td.tick}: ${diverged.map((a) => `${a.agentId}/${a.actionName} (${a.baselineOk ? 'ok' : 'fail'}->${a.replayOk ? 'ok' : 'fail'})`).join(', ')}`
+            );
+          }
+        }
+      }
+
       // Final status
       if (result.success) {
         output.success('Simulation completed successfully!');
@@ -337,6 +359,7 @@ export const runCommand = new Command('run')
             agentStats: result.agentStats,
             finalMetrics: serializableMetrics,
             failedAssertions: result.failedAssertions,
+            ...(result.replayDivergence ? { replayDivergence: result.replayDivergence } : {}),
           },
           null,
           2
@@ -383,6 +406,23 @@ export const runCommand = new Command('run')
           await printJsonResults(result);
         } else {
           printResults(result);
+        }
+
+        // Check replay divergence threshold
+        const failThreshold = options.replayFailThreshold;
+        if (
+          typeof failThreshold === 'number' &&
+          result.replayDivergence &&
+          result.replayDivergence.overallScore > failThreshold
+        ) {
+          if (!jsonOutput) {
+            output.newline();
+            output.error(
+              `Replay divergence ${result.replayDivergence.overallScore.toFixed(4)} exceeds threshold ${failThreshold}`
+            );
+          }
+          process.exitCode = 3;
+          return;
         }
 
         // Exit with appropriate code (allow stdout to flush first).

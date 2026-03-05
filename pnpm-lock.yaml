@@ -64,6 +64,9 @@ devDependencies:
   typedoc:
     specifier: ^0.27.0
     version: 0.27.9(typescript@5.9.3)
+  typedoc-plugin-markdown:
+    specifier: ^4.4.1
+    version: 4.4.1(typedoc@0.27.9)
   typescript:
     specifier: ^5.7.0
     version: 5.9.3
@@ -2801,6 +2804,15 @@ packages:
     optionalDependencies:
       fsevents: 2.3.3
     dev: false
+
+  /typedoc-plugin-markdown@4.4.1(typedoc@0.27.9):
+    resolution: {integrity: sha512-fx23nSCvewI9IR8lzIYtzDphETcgTDuxKcmHKGD4lo36oexC+B1k4NaCOY58Snqb4OlE8OXDAGVcQXYYuLRCNw==}
+    engines: {node: '>= 18'}
+    peerDependencies:
+      typedoc: 0.27.x
+    dependencies:
+      typedoc: 0.27.9(typescript@5.9.3)
+    dev: true
 
   /typedoc@0.27.9(typescript@5.9.3):
     resolution: {integrity: sha512-/z585740YHURLl9DN2jCWe6OW7zKYm6VoQ93H0sxZ1cwHQEQrUn5BJrEnkWhfzUdyO+BLGjnKUZ9iz9hKloFDw==}

@@ -32,7 +32,7 @@ export class ReplayRecorder {
 
   build(scenarioName: string, seed: number, mode: ReplayBundle['mode']): ReplayBundle {
     return {
-      version: 'v1',
+      version: 'v2',
       scenarioName,
       seed,
       mode,
@@ -57,9 +57,26 @@ export async function loadReplayBundle(path: string): Promise<ReplayBundle> {
   const validated = ReplayBundleSchema.parse(parsed);
   return {
     ...validated,
+    version: validated.version as 'v1' | 'v2',
     actions: validated.actions.map((entry) => {
+      const resultPart = entry.result
+        ? {
+            result: {
+              ok: entry.result.ok,
+              ...(entry.result.error ? { error: entry.result.error } : {}),
+            },
+          }
+        : {};
+      const metricsPart = entry.metricsSnapshot ? { metricsSnapshot: entry.metricsSnapshot } : {};
+
       if (!entry.action) {
-        return { tick: entry.tick, agentId: entry.agentId, action: null };
+        return {
+          tick: entry.tick,
+          agentId: entry.agentId,
+          action: null,
+          ...resultPart,
+          ...metricsPart,
+        };
       }
       const actionBase = {
         id: entry.action.id,
@@ -73,6 +90,8 @@ export async function loadReplayBundle(path: string): Promise<ReplayBundle> {
           entry.action.metadata !== undefined
             ? { ...actionBase, metadata: entry.action.metadata }
             : actionBase,
+        ...resultPart,
+        ...metricsPart,
       };
     }),
     messages: validated.messages as ReplayMessageRecord[],

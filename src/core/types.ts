@@ -429,6 +429,8 @@ export interface RunResult {
   outputDir: string;
   /** Optional replay bundle path if generated */
   replayBundlePath?: string;
+  /** Divergence result when running in replay mode against a v2 bundle */
+  replayDivergence?: ReplayDivergenceResult;
 }
 
 /**
@@ -643,6 +645,8 @@ export interface ReplayActionRecord {
   tick: number;
   agentId: string;
   action: Action | null;
+  result?: ActionResult;
+  metricsSnapshot?: Record<string, number>;
 }
 
 export interface ReplayMessageRecord {
@@ -666,7 +670,7 @@ export interface ReplayArbitraryExecutionRecord {
 }
 
 export interface ReplayBundle {
-  version: 'v1';
+  version: 'v1' | 'v2';
   scenarioName: string;
   seed: number;
   mode: RunMode;
@@ -674,6 +678,25 @@ export interface ReplayBundle {
   messages: ReplayMessageRecord[];
   queries: ReplayQueryRecord[];
   arbitraryExecutions: ReplayArbitraryExecutionRecord[];
+}
+
+export interface ReplayDivergenceResult {
+  overallScore: number;
+  tickDivergences: TickDivergence[];
+}
+
+export interface TickDivergence {
+  tick: number;
+  actionDivergences: ActionDivergence[];
+  metricsDelta: Record<string, { baseline: number; replay: number; pctChange: number }>;
+}
+
+export interface ActionDivergence {
+  agentId: string;
+  actionName: string;
+  baselineOk: boolean;
+  replayOk: boolean;
+  score: number;
 }
 
 export interface ReplayConfig {
