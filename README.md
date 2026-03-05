@@ -16,6 +16,11 @@
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/studio-home.png" alt="AgentForge Studio — Bloomberg-style simulation dashboard" width="820">
+</p>
+<p align="center"><em>AgentForge Studio — real-time simulation dashboard with financial charts, gossip analysis, and ML tooling</em></p>
+
 ---
 
 AgentForge simulates how your protocol behaves when many autonomous agents — traders, arbitrageurs, liquidators, LLM-driven strategists — act simultaneously with competing strategies over time. It fills the gap between isolated unit tests and production:
@@ -35,6 +40,8 @@ The [Uniswap v4 AgentForge Demo](https://github.com/wkyleg/v4-core/tree/main/sim
 - Multi-action agents that trade and communicate within the same tick
 - Strategy channels for LLM agent coordination
 - Studio dashboards with financial charts, gossip analysis, and ML tooling
+
+> **[See all Studio screenshots](docs/studio-screenshots.md)** — Overview, Timeline, Gossip, Report, Data, and Docs tabs.
 
 ## Quick Start
 

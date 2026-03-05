@@ -1,0 +1,54 @@
+---
+title: Studio Dashboard
+description: Visual tour of AgentForge Studio — the Bloomberg-style simulation dashboard.
+---
+
+AgentForge Studio is a real-time simulation dashboard that ships with the CLI. Launch it with:
+
+```bash
+npx forge-sim studio
+```
+
+It provides post-run analysis, financial charts, gossip inspection, ML tooling, and documentation browsing — all in a dark terminal aesthetic designed for high signal density.
+
+## Home
+
+Session list with status, seed, tick count, scenario name, and quick-access file links. Start new simulation runs directly from the UI.
+
+<img src="/images/studio-home.png" alt="Studio Home" />
+
+## Run Overview
+
+Run summary with seed, duration, mode, and pack info. Final metrics at a glance. Artifact fingerprint hashes for reproducibility. Full-width Lightweight Charts time series with zoom/pan and crosshair.
+
+<img src="/images/run-overview.png" alt="Run Overview" />
+
+## Report
+
+Config-driven post-run markdown report rendered from `scenario.studio.report` blocks. Includes experiment notes, hypotheses, success criteria, and embedded metric tables.
+
+<img src="/images/run-report.png" alt="Run Report" />
+
+## Timeline
+
+Every agent action per tick. Filterable by agent ID, success/failure status, and free-text search. JSON parameters are inspectable inline. Exportable as CSV.
+
+<img src="/images/run-timeline.png" alt="Run Timeline" />
+
+## Gossip
+
+Agent-to-agent message log from the gossip bus. Posts and deliveries with channel, author, recipient, and full message text. Paginated with kind filters.
+
+<img src="/images/run-gossip.png" alt="Run Gossip" />
+
+## Data
+
+Raw actions and metrics tables with search, sort, CSV export, and column visibility controls. Multi-select columns with Cmd/Ctrl+click.
+
+<img src="/images/run-data.png" alt="Run Data" />
+
+## Docs
+
+Browse project documentation (README, guides, changelogs) directly inside Studio without leaving the dashboard.
+
+<img src="/images/studio-docs.png" alt="Studio Docs" />

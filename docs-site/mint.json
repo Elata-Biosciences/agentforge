@@ -27,7 +27,7 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": ["introduction", "guides/concepts", "guides/cli"]
+      "pages": ["introduction", "guides/studio", "guides/concepts", "guides/cli"]
     },
     {
       "group": "Guides",
