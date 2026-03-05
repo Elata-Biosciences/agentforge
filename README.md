@@ -21,6 +21,11 @@
 </p>
 <p align="center"><em>AgentForge Studio — real-time simulation dashboard with financial charts, gossip analysis, and ML tooling</em></p>
 
+<p align="center">
+  <img src="docs/screenshots/run-report.png" alt="AgentForge Studio — post-run analysis report" width="820">
+</p>
+<p align="center"><em>Post-run analysis report with experiment notes, hypotheses, success criteria, and core metrics</em></p>
+
 ---
 
 AgentForge simulates how your protocol behaves when many autonomous agents — traders, arbitrageurs, liquidators, LLM-driven strategists — act simultaneously with competing strategies over time. It fills the gap between isolated unit tests and production:
